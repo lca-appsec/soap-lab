@@ -1,0 +1,48 @@
+{
+  "family": "soap-dast-lab",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::YOUR_ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "soap-dast-lab",
+      "image": "YOUR_ACCOUNT_ID.dkr.ecr.YOUR_REGION.amazonaws.com/soap-dast-lab:latest",
+      "essential": true,
+      "environment": [
+        {"name": "APP_MODE", "value": "both"},
+        {"name": "SOAP_DAST_HOST", "value": "0.0.0.0"},
+        {"name": "SOAP_DAST_PUBLIC_HOST", "value": "REPLACE_WITH_PUBLIC_DNS_OR_LOAD_BALANCER"},
+        {"name": "SOAP_DAST_PORT", "value": "8088"},
+        {"name": "SOAP_DAST_PUBLIC_PORT", "value": "8088"},
+        {"name": "SOAP_DAST_VULN_PORT", "value": "8089"},
+        {"name": "SOAP_DAST_VULN_PUBLIC_PORT", "value": "8089"}
+      ],
+      "portMappings": [
+        {
+          "name": "safe-soap",
+          "containerPort": 8088,
+          "hostPort": 8088,
+          "protocol": "tcp",
+          "appProtocol": "http"
+        },
+        {
+          "name": "vulnerable-soap",
+          "containerPort": 8089,
+          "hostPort": 8089,
+          "protocol": "tcp",
+          "appProtocol": "http"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/soap-dast-lab",
+          "awslogs-region": "YOUR_REGION",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}

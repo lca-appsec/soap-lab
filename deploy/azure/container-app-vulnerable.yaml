@@ -1,0 +1,22 @@
+properties:
+  configuration:
+    ingress:
+      external: true
+      targetPort: 8089
+      transport: http
+  template:
+    containers:
+      - name: soap-dast-lab-vulnerable
+        image: REPLACE_WITH_ACR.azurecr.io/soap-dast-lab:latest
+        env:
+          - name: APP_MODE
+            value: vulnerable
+          - name: SOAP_DAST_HOST
+            value: 0.0.0.0
+          - name: SOAP_DAST_VULN_PORT
+            value: "8089"
+          - name: SOAP_DAST_VULN_PUBLIC_PORT
+            value: "443"
+        resources:
+          cpu: 0.5
+          memory: 1Gi

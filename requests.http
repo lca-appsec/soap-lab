@@ -1,0 +1,105 @@
+### WSDL
+GET http://127.0.0.1:8088/soap?wsdl
+
+### Login
+POST http://127.0.0.1:8088/soap
+Content-Type: text/xml
+SOAPAction: Login
+
+<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:lab="urn:soap-dast-lab">
+  <soap:Body>
+    <lab:Login>
+      <lab:Username>user_apollo</lab:Username>
+      <lab:Password>P6d@Xe1mRt$7</lab:Password>
+    </lab:Login>
+  </soap:Body>
+</soap:Envelope>
+
+### ValidateToken
+POST http://127.0.0.1:8088/soap
+Content-Type: text/xml
+SOAPAction: ValidateToken
+Authorization: Bearer {{access_token}}
+Cookie: DASTSESSION={{session_id}}
+
+<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:lab="urn:soap-dast-lab">
+  <soap:Body>
+    <lab:ValidateToken/>
+  </soap:Body>
+</soap:Envelope>
+
+### GetAccount
+POST http://127.0.0.1:8088/soap
+Content-Type: text/xml
+SOAPAction: GetAccount
+Authorization: Bearer {{access_token}}
+Cookie: DASTSESSION={{session_id}}
+
+<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:lab="urn:soap-dast-lab">
+  <soap:Body>
+    <lab:GetAccount>
+      <lab:AccountId>1001</lab:AccountId>
+    </lab:GetAccount>
+  </soap:Body>
+</soap:Envelope>
+
+### TransferFunds
+POST http://127.0.0.1:8088/soap
+Content-Type: text/xml
+SOAPAction: TransferFunds
+Authorization: Bearer {{access_token}}
+Cookie: DASTSESSION={{session_id}}
+
+<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:lab="urn:soap-dast-lab">
+  <soap:Body>
+    <lab:TransferFunds>
+      <lab:ToAccount>2002</lab:ToAccount>
+      <lab:Amount>125.50</lab:Amount>
+    </lab:TransferFunds>
+  </soap:Body>
+</soap:Envelope>
+
+### SearchUser fuzz target
+POST http://127.0.0.1:8088/soap
+Content-Type: text/xml
+SOAPAction: SearchUser
+Authorization: Bearer {{access_token}}
+Cookie: DASTSESSION={{session_id}}
+
+<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:lab="urn:soap-dast-lab">
+  <soap:Body>
+    <lab:SearchUser>
+      <lab:Query>ali</lab:Query>
+    </lab:SearchUser>
+  </soap:Body>
+</soap:Envelope>
+
+### RefreshToken
+POST http://127.0.0.1:8088/soap
+Content-Type: text/xml
+SOAPAction: RefreshToken
+
+<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:lab="urn:soap-dast-lab">
+  <soap:Body>
+    <lab:RefreshToken>
+      <lab:RefreshToken>{{refresh_token}}</lab:RefreshToken>
+    </lab:RefreshToken>
+  </soap:Body>
+</soap:Envelope>
+
+### HTTP verb discovery
+OPTIONS http://127.0.0.1:8088/verbs
+
+### Authenticated PUT verb probe
+PUT http://127.0.0.1:8088/verbs
+Authorization: Bearer {{access_token}}
+Cookie: DASTSESSION={{session_id}}
+
+### TRACE should be rejected
+TRACE http://127.0.0.1:8088/verbs

@@ -1,0 +1,88 @@
+### Login as admin
+POST http://127.0.0.1:8088/soap
+Content-Type: text/xml
+SOAPAction: Login
+
+<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:lab="urn:soap-dast-lab">
+  <soap:Body>
+    <lab:Login>
+      <lab:Username>admin_aurora</lab:Username>
+      <lab:Password>R9v!tQ2mZx#4</lab:Password>
+    </lab:Login>
+  </soap:Body>
+</soap:Envelope>
+
+### Admin product list
+GET http://127.0.0.1:8088/admin
+Authorization: Bearer {{admin_access_token}}
+
+### Admin product list on collection path
+GET http://127.0.0.1:8088/admin/products
+Authorization: Bearer {{admin_access_token}}
+
+### Admin create product
+POST http://127.0.0.1:8088/admin/products
+Content-Type: application/json
+Authorization: Bearer {{admin_access_token}}
+
+{
+  "sku": "SKU-600",
+  "name": "Headset Prisma ANC",
+  "price": 599.9,
+  "stock": 14
+}
+
+### Admin edit product with custom PUSH verb
+PUSH http://127.0.0.1:8088/admin/products
+Content-Type: application/json
+Authorization: Bearer {{admin_access_token}}
+
+{
+  "sku": "SKU-100",
+  "price": 3999.9,
+  "stock": 21
+}
+
+### Admin delete product
+DELETE http://127.0.0.1:8088/admin/products?sku=SKU-600
+Authorization: Bearer {{admin_access_token}}
+
+### Login as user
+POST http://127.0.0.1:8088/soap
+Content-Type: text/xml
+SOAPAction: Login
+
+<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:lab="urn:soap-dast-lab">
+  <soap:Body>
+    <lab:Login>
+      <lab:Username>user_apollo</lab:Username>
+      <lab:Password>P6d@Xe1mRt$7</lab:Password>
+    </lab:Login>
+  </soap:Body>
+</soap:Envelope>
+
+### User catalog
+GET http://127.0.0.1:8088/user
+Authorization: Bearer {{user_access_token}}
+
+### User product list
+GET http://127.0.0.1:8088/user/products
+Authorization: Bearer {{user_access_token}}
+
+### User should not access admin
+GET http://127.0.0.1:8088/admin
+Authorization: Bearer {{user_access_token}}
+
+### User should not create products
+POST http://127.0.0.1:8088/user/products
+Content-Type: application/json
+Authorization: Bearer {{user_access_token}}
+
+{
+  "sku": "SKU-700",
+  "name": "Blocked Product",
+  "price": 10,
+  "stock": 1
+}
