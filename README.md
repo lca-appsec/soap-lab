@@ -2,17 +2,23 @@
 
 English | Portugues
 
-This project is a small security testing playground. Think of it like a toy store with two doors:
+This project is a small security testing playground for demonstrating SOAP and REST attacks in an authorized lab.
 
-- Door 1, port `8088`: the safer SOAP API.
-- Door 2, port `8089`: the intentionally vulnerable SOAP API.
+- Port `8089`: intentionally vulnerable API.
+- XML/SOAP API: `/soap`
+- REST JSON API: `/api`
+- REST Swagger/OpenAPI: `/swagger/rest.json`
+- XML/SOAP Swagger/OpenAPI: `/swagger/xml.json`
 
 You use it to test DAST scanners, fuzzing, JWT login, refresh tokens, session cookies, HTTP verbs, admin routes, and user routes.
 
-Este projeto e um pequeno laboratorio para testes de seguranca. Pense nele como uma lojinha com duas portas:
+Este projeto e um pequeno laboratorio para demonstrar ataques em SOAP e REST em ambiente autorizado.
 
-- Porta 1, porta `8088`: API SOAP mais segura/controlada.
-- Porta 2, porta `8089`: API SOAP vulneravel de proposito.
+- Porta `8089`: API vulneravel de proposito.
+- API XML/SOAP: `/soap`
+- API REST JSON: `/api`
+- Swagger/OpenAPI REST: `/swagger/rest.json`
+- Swagger/OpenAPI XML/SOAP: `/swagger/xml.json`
 
 Voce usa para testar scanners DAST, fuzzing, login JWT, refresh token, cookie de sessao, verbos HTTP, rotas de admin e rotas de user.
 
@@ -20,14 +26,14 @@ Voce usa para testar scanners DAST, fuzzing, login JWT, refresh token, cookie de
 
 ## What Was Built
 
-The container starts two Python applications at the same time:
+The container starts only the intentionally vulnerable Python application:
 
-- `server.py`: secure/control version on `8088`.
 - `vulnerable_server.py`: intentionally vulnerable version on `8089`.
 
-Both applications support:
+The vulnerable application supports:
 
 - SOAP login with JWT.
+- REST JSON login with JWT.
 - Dynamic JWT access tokens.
 - Access token expiration after **3 minutes**.
 - Refresh token flow to continue the session.
@@ -36,11 +42,8 @@ Both applications support:
 - Five admin users.
 - Five normal users.
 - Product routes for testing HTTP verbs.
-
-The secure app allows:
-
-- Admins: `GET`, `POST`, `PUSH`, `DELETE`.
-- Users: only `GET`.
+- Swagger/OpenAPI for REST JSON.
+- Swagger/OpenAPI-style documentation for XML/SOAP.
 
 The vulnerable app adds intentional problems:
 
@@ -56,14 +59,14 @@ The vulnerable app adds intentional problems:
 
 ## O Que Foi Construido
 
-O container inicia duas aplicacoes Python ao mesmo tempo:
+O container inicia somente a aplicacao Python vulneravel de proposito:
 
-- `server.py`: versao segura/controlada na porta `8088`.
 - `vulnerable_server.py`: versao vulneravel de proposito na porta `8089`.
 
-As duas aplicacoes suportam:
+A aplicacao vulneravel suporta:
 
 - Login SOAP com JWT.
+- Login REST JSON com JWT.
 - Token JWT dinamico.
 - Access token expira depois de **3 minutos**.
 - Refresh token para continuar a sessao.
@@ -72,11 +75,8 @@ As duas aplicacoes suportam:
 - Cinco usuarios admin.
 - Cinco usuarios comuns.
 - Rotas de produtos para testar verbos HTTP.
-
-A aplicacao segura permite:
-
-- Admins: `GET`, `POST`, `PUSH`, `DELETE`.
-- Users: somente `GET`.
+- Swagger/OpenAPI para REST JSON.
+- Documentacao estilo Swagger/OpenAPI para XML/SOAP.
 
 A aplicacao vulneravel adiciona problemas de proposito:
 
@@ -92,19 +92,19 @@ A aplicacao vulneravel adiciona problemas de proposito:
 
 ## Files
 
-- `server.py`: secure SOAP/API server.
-- `vulnerable_server.py`: vulnerable SOAP/API server.
-- `run_both.py`: starts both servers inside one container.
+- `server.py`: shared helpers, users, tokens, products, XML helpers.
+- `vulnerable_server.py`: vulnerable XML/SOAP and REST JSON server.
+- `run_both.py`: starts the selected app mode; Docker Compose uses `APP_MODE=vulnerable`.
 - `Dockerfile`: builds the container image.
-- `docker-compose.yml`: runs both apps locally.
+- `docker-compose.yml`: runs the vulnerable app locally on `8089`.
 - `deploy/aws/ecs-task-definition.json`: AWS ECS/Fargate task definition example.
 - `deploy/aws/create-ecs-fargate.sh`: helper script to build, push to ECR, and create an ECS service.
 - `deploy/azure/create-container-apps.sh`: helper script to build, push to ACR, and create Azure Container Apps.
-- `deploy/azure/container-app-safe.yaml`: Azure Container Apps YAML for the safe app.
 - `deploy/azure/container-app-vulnerable.yaml`: Azure Container Apps YAML for the vulnerable app.
 - `requests.http`: SOAP examples.
 - `vulnerable-requests.http`: vulnerable examples.
 - `admin-user-requests.http`: admin/user product route examples.
+- `rest-json-requests.http`: REST JSON route and Swagger examples.
 
 ---
 
@@ -134,7 +134,7 @@ Normal users:
 
 ## Run With Docker Desktop
 
-Imagine Docker is a lunchbox. We put both apps inside the lunchbox and open two little windows: `8088` and `8089`.
+Imagine Docker is a lunchbox. We put the vulnerable app inside the lunchbox and open one little window: `8089`.
 
 Build and start:
 
@@ -148,16 +148,22 @@ Check if it is running:
 docker compose ps
 ```
 
-Open the safe WSDL:
-
-```text
-http://127.0.0.1:8088/soap?wsdl
-```
-
-Open the vulnerable WSDL:
+Open the XML/SOAP WSDL:
 
 ```text
 http://127.0.0.1:8089/soap?wsdl
+```
+
+Open REST Swagger:
+
+```text
+http://127.0.0.1:8089/swagger/rest.json
+```
+
+Open XML/SOAP Swagger:
+
+```text
+http://127.0.0.1:8089/swagger/xml.json
 ```
 
 See logs:
@@ -176,7 +182,7 @@ docker compose down
 
 ## Rodar Com Docker Desktop
 
-Imagine que o Docker e uma lancheira. Colocamos as duas aplicacoes dentro da lancheira e abrimos duas janelinhas: `8088` e `8089`.
+Imagine que o Docker e uma lancheira. Colocamos a aplicacao vulneravel dentro da lancheira e abrimos uma janelinha: `8089`.
 
 Build e start:
 
@@ -190,10 +196,10 @@ Ver se esta rodando:
 docker compose ps
 ```
 
-Abrir o WSDL seguro:
+Abrir o WSDL XML/SOAP:
 
 ```text
-http://127.0.0.1:8088/soap?wsdl
+http://127.0.0.1:8089/soap?wsdl
 ```
 
 Abrir o WSDL vulneravel:
@@ -216,6 +222,120 @@ docker compose down
 
 ---
 
+## API Surfaces
+
+The vulnerable lab exposes two API styles on the same port:
+
+XML/SOAP:
+
+- `GET /soap?wsdl`
+- `POST /soap`
+- `GET /swagger/xml.json`
+
+REST JSON:
+
+- `GET /api`
+- `POST /api/login`
+- `POST /api/refresh`
+- `GET /api/validate`
+- `GET /api/admin/products`
+- `POST /api/admin/products`
+- `PUSH /api/admin/products`
+- `POST /api/admin/products/push` as a Swagger-friendly alias for `PUSH`
+- `DELETE /api/admin/products?sku=SKU-100`
+- `GET /api/user/products`
+- `GET /api/audit`
+- `GET /swagger/rest.json`
+
+REST JSON login:
+
+```bash
+curl -s -X POST 'http://127.0.0.1:8089/api/login' \
+  -H 'Content-Type: application/json' \
+  --data '{"username":"admin_aurora","password":"R9v!tQ2mZx#4"}'
+```
+
+Use the returned token:
+
+```bash
+curl -s 'http://127.0.0.1:8089/api/admin/products' \
+  -H 'Authorization: Bearer YOUR_ACCESS_TOKEN'
+```
+
+REST JSON refresh:
+
+```bash
+curl -s -X POST 'http://127.0.0.1:8089/api/refresh' \
+  -H 'Content-Type: application/json' \
+  --data '{"refreshToken":"YOUR_REFRESH_TOKEN"}'
+```
+
+Swagger/OpenAPI:
+
+```text
+http://127.0.0.1:8089/swagger/rest.json
+http://127.0.0.1:8089/swagger/xml.json
+```
+
+---
+
+## Superficies De API
+
+O laboratorio vulneravel expoe dois estilos de API na mesma porta:
+
+XML/SOAP:
+
+- `GET /soap?wsdl`
+- `POST /soap`
+- `GET /swagger/xml.json`
+
+REST JSON:
+
+- `GET /api`
+- `POST /api/login`
+- `POST /api/refresh`
+- `GET /api/validate`
+- `GET /api/admin/products`
+- `POST /api/admin/products`
+- `PUSH /api/admin/products`
+- `POST /api/admin/products/push` como alias amigavel para Swagger do verbo `PUSH`
+- `DELETE /api/admin/products?sku=SKU-100`
+- `GET /api/user/products`
+- `GET /api/audit`
+- `GET /swagger/rest.json`
+
+Login REST JSON:
+
+```bash
+curl -s -X POST 'http://127.0.0.1:8089/api/login' \
+  -H 'Content-Type: application/json' \
+  --data '{"username":"admin_aurora","password":"R9v!tQ2mZx#4"}'
+```
+
+Use o token retornado:
+
+```bash
+curl -s 'http://127.0.0.1:8089/api/admin/products' \
+  -H 'Authorization: Bearer YOUR_ACCESS_TOKEN'
+```
+
+Refresh REST JSON:
+
+```bash
+curl -s -X POST 'http://127.0.0.1:8089/api/refresh' \
+  -H 'Content-Type: application/json' \
+  --data '{"refreshToken":"YOUR_REFRESH_TOKEN"}'
+```
+
+Swagger/OpenAPI:
+
+```text
+http://127.0.0.1:8089/swagger/rest.json
+http://127.0.0.1:8089/swagger/xml.json
+```
+
+---
+
 ## Login: Get Access Token And Refresh Token
 
 The access token is like a small visitor badge. It works for 3 minutes.
@@ -225,7 +345,7 @@ The refresh token is like asking the front desk: "Please give me a new badge so 
 Admin login:
 
 ```bash
-curl -s -X POST 'http://127.0.0.1:8088/soap' \
+curl -s -X POST 'http://127.0.0.1:8089/soap' \
   -H 'Content-Type: text/xml' \
   -H 'SOAPAction: Login' \
   --data-binary '<?xml version="1.0"?>
@@ -250,7 +370,7 @@ The response contains:
 Copy the `AccessToken`. Use it like this:
 
 ```bash
-curl -s 'http://127.0.0.1:8088/admin/products' \
+curl -s 'http://127.0.0.1:8089/admin/products' \
   -H 'Authorization: Bearer YOUR_ACCESS_TOKEN'
 ```
 
@@ -265,7 +385,7 @@ O refresh token e como falar na recepcao: "Me da outro cracha para eu continuar.
 Login admin:
 
 ```bash
-curl -s -X POST 'http://127.0.0.1:8088/soap' \
+curl -s -X POST 'http://127.0.0.1:8089/soap' \
   -H 'Content-Type: text/xml' \
   -H 'SOAPAction: Login' \
   --data-binary '<?xml version="1.0"?>
@@ -290,7 +410,7 @@ A resposta contem:
 Copie o `AccessToken`. Use assim:
 
 ```bash
-curl -s 'http://127.0.0.1:8088/admin/products' \
+curl -s 'http://127.0.0.1:8089/admin/products' \
   -H 'Authorization: Bearer YOUR_ACCESS_TOKEN'
 ```
 
@@ -303,7 +423,7 @@ Wait 3 minutes, or keep using the app until the access token expires.
 Then call `RefreshToken`:
 
 ```bash
-curl -s -X POST 'http://127.0.0.1:8088/soap' \
+curl -s -X POST 'http://127.0.0.1:8089/soap' \
   -H 'Content-Type: text/xml' \
   -H 'SOAPAction: RefreshToken' \
   --data-binary '<?xml version="1.0"?>
@@ -316,26 +436,26 @@ curl -s -X POST 'http://127.0.0.1:8088/soap' \
 </soap:Envelope>'
 ```
 
-In the secure app, the response gives you:
+In the vulnerable app, the response gives you:
 
 - A new `AccessToken`.
-- A new `RefreshToken`.
-- `Rotated` equals `true`.
+- The same reusable `RefreshToken`.
+- `Rotated` equals `false`.
 
 Now use the new `AccessToken`:
 
 ```bash
-curl -s 'http://127.0.0.1:8088/admin/products' \
+curl -s 'http://127.0.0.1:8089/admin/products' \
   -H 'Authorization: Bearer NEW_ACCESS_TOKEN'
 ```
 
-Try the old refresh token again. The secure app should reject it with:
+Try the old refresh token again. The vulnerable app accepts it again. That is intentional, and it demonstrates refresh token reuse.
 
 ```text
-refresh_token_reused
+refresh token reuse allowed
 ```
 
-That proves the refresh token rotation is working.
+That proves the vulnerable refresh token behavior is detectable.
 
 ---
 
@@ -366,9 +486,9 @@ Authorization: Bearer YOUR_ACCESS_TOKEN
 
 4. **Refresh token**
    - When the access token expires, call SOAP `RefreshToken`.
-   - The secure app returns a new access token and a new refresh token.
-   - The old refresh token cannot be used again.
-   - This is called refresh token rotation.
+   - The vulnerable app returns a new access token.
+   - The old refresh token can be used again.
+   - This is intentionally unsafe and useful for demonstrations.
 
 Simple picture:
 
@@ -410,7 +530,7 @@ Important: the app does **not** log raw tokens. It logs token fingerprints, whic
 Read logs:
 
 ```bash
-curl -s 'http://127.0.0.1:8088/audit'
+curl -s 'http://127.0.0.1:8089/audit'
 ```
 
 Example auth log:
@@ -429,7 +549,7 @@ Example auth log:
     <details>
       <old_refresh_token_fingerprint>abc123...</old_refresh_token_fingerprint>
       <new_refresh_token_fingerprint>def456...</new_refresh_token_fingerprint>
-      <refresh_rotated>True</refresh_rotated>
+      <refresh_rotated>False</refresh_rotated>
     </details>
   </event>
 </response>
@@ -439,7 +559,7 @@ For fuzzing, this is useful because you can prove what happened:
 
 - Did the scanner send no token?
 - Did the JWT expire?
-- Did the scanner reuse an old refresh token?
+- Did the scanner detect that an old refresh token can be reused?
 - Did a user token try an admin route?
 - Did the refresh flow issue a new dynamic JWT?
 
@@ -452,7 +572,7 @@ Espere 3 minutos, ou continue usando a aplicacao ate o access token expirar.
 Depois chame `RefreshToken`:
 
 ```bash
-curl -s -X POST 'http://127.0.0.1:8088/soap' \
+curl -s -X POST 'http://127.0.0.1:8089/soap' \
   -H 'Content-Type: text/xml' \
   -H 'SOAPAction: RefreshToken' \
   --data-binary '<?xml version="1.0"?>
@@ -465,23 +585,23 @@ curl -s -X POST 'http://127.0.0.1:8088/soap' \
 </soap:Envelope>'
 ```
 
-Na aplicacao segura, a resposta entrega:
+Na aplicacao vulneravel, a resposta entrega:
 
 - Um novo `AccessToken`.
 - Um novo `RefreshToken`.
-- `Rotated` igual a `true`.
+- `Rotated` igual a `false`.
 
 Agora use o novo `AccessToken`:
 
 ```bash
-curl -s 'http://127.0.0.1:8088/admin/products' \
+curl -s 'http://127.0.0.1:8089/admin/products' \
   -H 'Authorization: Bearer NEW_ACCESS_TOKEN'
 ```
 
-Tente usar o refresh token antigo de novo. A aplicacao segura deve rejeitar com:
+Tente usar o refresh token antigo de novo. A aplicacao vulneravel aceita novamente. Isso e intencional e demonstra reuso de refresh token.
 
 ```text
-refresh_token_reused
+refresh token reuse allowed
 ```
 
 Isso prova que a rotacao do refresh token esta funcionando.
@@ -515,7 +635,7 @@ Authorization: Bearer YOUR_ACCESS_TOKEN
 
 4. **Refresh token**
    - Quando o access token expira, chame a operacao SOAP `RefreshToken`.
-   - A aplicacao segura retorna um novo access token e um novo refresh token.
+   - A aplicacao vulneravel retorna um novo access token e um novo refresh token.
    - O refresh token antigo nao pode ser usado novamente.
    - Isso se chama rotacao de refresh token.
 
@@ -559,7 +679,7 @@ Importante: a app **nao** grava tokens reais no log. Ela grava fingerprints dos 
 Ler logs:
 
 ```bash
-curl -s 'http://127.0.0.1:8088/audit'
+curl -s 'http://127.0.0.1:8089/audit'
 ```
 
 Exemplo de log de autenticacao:
@@ -578,7 +698,7 @@ Exemplo de log de autenticacao:
     <details>
       <old_refresh_token_fingerprint>abc123...</old_refresh_token_fingerprint>
       <new_refresh_token_fingerprint>def456...</new_refresh_token_fingerprint>
-      <refresh_rotated>True</refresh_rotated>
+      <refresh_rotated>False</refresh_rotated>
     </details>
   </event>
 </response>
@@ -601,14 +721,14 @@ Admins can list, create, edit, and delete products.
 List:
 
 ```bash
-curl -s 'http://127.0.0.1:8088/admin/products' \
+curl -s 'http://127.0.0.1:8089/admin/products' \
   -H 'Authorization: Bearer ADMIN_ACCESS_TOKEN'
 ```
 
 Create:
 
 ```bash
-curl -s -X POST 'http://127.0.0.1:8088/admin/products' \
+curl -s -X POST 'http://127.0.0.1:8089/admin/products' \
   -H 'Content-Type: application/xml' \
   -H 'Authorization: Bearer ADMIN_ACCESS_TOKEN' \
   --data '<product><sku>SKU-600</sku><name>Headset Prisma ANC</name><price>599.90</price><stock>14</stock></product>'
@@ -617,7 +737,7 @@ curl -s -X POST 'http://127.0.0.1:8088/admin/products' \
 Edit with custom `PUSH`:
 
 ```bash
-curl -s -X PUSH 'http://127.0.0.1:8088/admin/products' \
+curl -s -X PUSH 'http://127.0.0.1:8089/admin/products' \
   -H 'Content-Type: application/xml' \
   -H 'Authorization: Bearer ADMIN_ACCESS_TOKEN' \
   --data '<product><sku>SKU-600</sku><price>499.90</price><stock>20</stock></product>'
@@ -626,7 +746,7 @@ curl -s -X PUSH 'http://127.0.0.1:8088/admin/products' \
 Delete:
 
 ```bash
-curl -s -X DELETE 'http://127.0.0.1:8088/admin/products?sku=SKU-600' \
+curl -s -X DELETE 'http://127.0.0.1:8089/admin/products?sku=SKU-600' \
   -H 'Authorization: Bearer ADMIN_ACCESS_TOKEN'
 ```
 
@@ -639,14 +759,14 @@ Admins podem listar, criar, editar e deletar produtos.
 Listar:
 
 ```bash
-curl -s 'http://127.0.0.1:8088/admin/products' \
+curl -s 'http://127.0.0.1:8089/admin/products' \
   -H 'Authorization: Bearer ADMIN_ACCESS_TOKEN'
 ```
 
 Criar:
 
 ```bash
-curl -s -X POST 'http://127.0.0.1:8088/admin/products' \
+curl -s -X POST 'http://127.0.0.1:8089/admin/products' \
   -H 'Content-Type: application/xml' \
   -H 'Authorization: Bearer ADMIN_ACCESS_TOKEN' \
   --data '<product><sku>SKU-600</sku><name>Headset Prisma ANC</name><price>599.90</price><stock>14</stock></product>'
@@ -655,7 +775,7 @@ curl -s -X POST 'http://127.0.0.1:8088/admin/products' \
 Editar com verbo customizado `PUSH`:
 
 ```bash
-curl -s -X PUSH 'http://127.0.0.1:8088/admin/products' \
+curl -s -X PUSH 'http://127.0.0.1:8089/admin/products' \
   -H 'Content-Type: application/xml' \
   -H 'Authorization: Bearer ADMIN_ACCESS_TOKEN' \
   --data '<product><sku>SKU-600</sku><price>499.90</price><stock>20</stock></product>'
@@ -664,7 +784,7 @@ curl -s -X PUSH 'http://127.0.0.1:8088/admin/products' \
 Deletar:
 
 ```bash
-curl -s -X DELETE 'http://127.0.0.1:8088/admin/products?sku=SKU-600' \
+curl -s -X DELETE 'http://127.0.0.1:8089/admin/products?sku=SKU-600' \
   -H 'Authorization: Bearer ADMIN_ACCESS_TOKEN'
 ```
 
@@ -675,14 +795,14 @@ curl -s -X DELETE 'http://127.0.0.1:8088/admin/products?sku=SKU-600' \
 Users can only list products.
 
 ```bash
-curl -s 'http://127.0.0.1:8088/user/products' \
+curl -s 'http://127.0.0.1:8089/user/products' \
   -H 'Authorization: Bearer USER_ACCESS_TOKEN'
 ```
 
 If a user tries to create, edit, or delete, the app returns `403`.
 
 ```bash
-curl -i -X POST 'http://127.0.0.1:8088/user/products' \
+curl -i -X POST 'http://127.0.0.1:8089/user/products' \
   -H 'Content-Type: application/xml' \
   -H 'Authorization: Bearer USER_ACCESS_TOKEN' \
   --data '<product><sku>SKU-700</sku><name>Blocked Product</name><price>10</price><stock>1</stock></product>'
@@ -695,14 +815,14 @@ curl -i -X POST 'http://127.0.0.1:8088/user/products' \
 Users so podem listar produtos.
 
 ```bash
-curl -s 'http://127.0.0.1:8088/user/products' \
+curl -s 'http://127.0.0.1:8089/user/products' \
   -H 'Authorization: Bearer USER_ACCESS_TOKEN'
 ```
 
 Se um user tentar criar, editar ou deletar, a aplicacao retorna `403`.
 
 ```bash
-curl -i -X POST 'http://127.0.0.1:8088/user/products' \
+curl -i -X POST 'http://127.0.0.1:8089/user/products' \
   -H 'Content-Type: application/xml' \
   -H 'Authorization: Bearer USER_ACCESS_TOKEN' \
   --data '<product><sku>SKU-700</sku><name>Blocked Product</name><price>10</price><stock>1</stock></product>'
@@ -736,7 +856,7 @@ Authentication tests:
 - Modified JWT payload.
 - Modified JWT signature.
 - Old refresh token reuse.
-- Refresh token rotation.
+- Missing refresh token rotation.
 - Session cookie mismatch.
 - User token trying admin path.
 - Admin token using all verbs.
@@ -811,14 +931,14 @@ This project includes:
 
 The ECS version runs both apps inside the same Fargate task:
 
-- Safe app: container port `8088`
+- Vulnerable app: container port `8089`
 - Vulnerable app: container port `8089`
 
 Before running the script, create or choose:
 
 - A VPC.
 - Two subnets.
-- A Security Group allowing inbound `8088` and `8089` from your test IP.
+- A Security Group allowing inbound `8089` and `8089` from your test IP.
 - An IAM role named `ecsTaskExecutionRole`, or adjust the task definition.
 - AWS CLI already logged in.
 - Docker installed locally.
@@ -843,13 +963,13 @@ chmod +x deploy/aws/create-ecs-fargate.sh
 Test after the ECS task is reachable:
 
 ```text
-http://YOUR_ECS_PUBLIC_ENDPOINT:8088/soap?wsdl
+http://YOUR_ECS_PUBLIC_ENDPOINT:8089/soap?wsdl
 http://YOUR_ECS_PUBLIC_ENDPOINT:8089/soap?wsdl
 ```
 
 For a cleaner architecture, place an Application Load Balancer in front of ECS and expose:
 
-- Listener/rule for the safe service on `8088`.
+- Listener/rule for the vulnerable service on `8089`.
 - Listener/rule for the vulnerable service on `8089`.
 
 For demos, direct public Fargate networking is enough if your Security Group is restricted to your testing IP.
@@ -873,14 +993,14 @@ Este projeto inclui:
 
 A versao ECS roda as duas aplicacoes dentro do mesmo task Fargate:
 
-- App segura: porta de container `8088`
+- App vulneravel: porta de container `8089`
 - App vulneravel: porta de container `8089`
 
 Antes de rodar o script, crie ou escolha:
 
 - Uma VPC.
 - Duas subnets.
-- Um Security Group permitindo entrada nas portas `8088` e `8089` somente do seu IP de teste.
+- Um Security Group permitindo entrada nas portas `8089` e `8089` somente do seu IP de teste.
 - Uma role IAM chamada `ecsTaskExecutionRole`, ou ajuste a task definition.
 - AWS CLI ja autenticado.
 - Docker instalado localmente.
@@ -905,13 +1025,13 @@ chmod +x deploy/aws/create-ecs-fargate.sh
 Teste quando o task ECS estiver acessivel:
 
 ```text
-http://YOUR_ECS_PUBLIC_ENDPOINT:8088/soap?wsdl
+http://YOUR_ECS_PUBLIC_ENDPOINT:8089/soap?wsdl
 http://YOUR_ECS_PUBLIC_ENDPOINT:8089/soap?wsdl
 ```
 
 Para uma arquitetura mais organizada, coloque um Application Load Balancer na frente do ECS e exponha:
 
-- Listener/regra para a aplicacao segura na `8088`.
+- Listener/regra para a aplicacao vulneravel na `8089`.
 - Listener/regra para a aplicacao vulneravel na `8089`.
 
 Para demonstracoes, rede publica direta no Fargate e suficiente se o Security Group estiver restrito ao seu IP de teste.
@@ -922,7 +1042,6 @@ Para demonstracoes, rede publica direta no Fargate e suficiente se o Security Gr
 
 Azure Container Apps is easiest when each public app has one HTTP ingress. So this project uses the same image twice:
 
-- One Container App with `APP_MODE=safe`.
 - One Container App with `APP_MODE=vulnerable`.
 
 Official Microsoft docs:
@@ -934,7 +1053,6 @@ Official Microsoft docs:
 This project includes:
 
 - `deploy/azure/create-container-apps.sh`
-- `deploy/azure/container-app-safe.yaml`
 - `deploy/azure/container-app-vulnerable.yaml`
 
 Before running the script, install and login:
@@ -963,11 +1081,8 @@ chmod +x deploy/azure/create-container-apps.sh
 The script creates two URLs:
 
 ```text
-https://soap-dast-lab-safe.YOUR_ENV.azurecontainerapps.io/soap?wsdl
 https://soap-dast-lab-vulnerable.YOUR_ENV.azurecontainerapps.io/soap?wsdl
 ```
-
-Use the safe URL for normal authentication and refresh token demos.
 
 Use the vulnerable URL for attack demonstrations.
 
@@ -977,7 +1092,6 @@ Use the vulnerable URL for attack demonstrations.
 
 Azure Container Apps fica mais simples quando cada app publico tem um ingress HTTP principal. Por isso este projeto usa a mesma imagem duas vezes:
 
-- Um Container App com `APP_MODE=safe`.
 - Um Container App com `APP_MODE=vulnerable`.
 
 Documentacao oficial Microsoft:
@@ -989,7 +1103,6 @@ Documentacao oficial Microsoft:
 Este projeto inclui:
 
 - `deploy/azure/create-container-apps.sh`
-- `deploy/azure/container-app-safe.yaml`
 - `deploy/azure/container-app-vulnerable.yaml`
 
 Antes de rodar o script, instale e autentique:
@@ -1018,11 +1131,8 @@ chmod +x deploy/azure/create-container-apps.sh
 O script cria duas URLs:
 
 ```text
-https://soap-dast-lab-safe.YOUR_ENV.azurecontainerapps.io/soap?wsdl
 https://soap-dast-lab-vulnerable.YOUR_ENV.azurecontainerapps.io/soap?wsdl
 ```
-
-Use a URL segura para demonstracoes normais de autenticacao e refresh token.
 
 Use a URL vulneravel para demonstracoes de ataque.
 

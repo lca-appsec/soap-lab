@@ -62,8 +62,218 @@ VULNERABLE_WSDL = server.WSDL.replace(
 )
 
 
+def public_base_url():
+    scheme = os.environ.get("SOAP_DAST_PUBLIC_SCHEME", "http")
+    return f"{scheme}://{PUBLIC_HOST}:{PUBLIC_PORT}"
+
+
+def product_for_admin(sku, product):
+    return {"sku": sku, "name": product["name"], "price": product["price"], "stock": product["stock"]}
+
+
+def product_for_user(sku, product):
+    return {"sku": sku, "name": product["name"], "available": product["stock"] > 0}
+
+
+def rest_openapi_spec():
+    return {
+        "openapi": "3.0.3",
+        "info": {
+            "title": "Vulnerable SOAP Lab - REST JSON API",
+            "version": "1.0.0",
+            "description": "Intentionally vulnerable REST JSON API for authorized DAST/fuzzing demonstrations.",
+        },
+        "servers": [{"url": public_base_url()}],
+        "components": {
+            "securitySchemes": {
+                "bearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}
+            },
+            "schemas": {
+                "LoginRequest": {
+                    "type": "object",
+                    "required": ["username", "password"],
+                    "properties": {"username": {"type": "string"}, "password": {"type": "string"}},
+                },
+                "RefreshRequest": {
+                    "type": "object",
+                    "required": ["refreshToken"],
+                    "properties": {"refreshToken": {"type": "string"}},
+                },
+                "Product": {
+                    "type": "object",
+                    "properties": {
+                        "sku": {"type": "string"},
+                        "name": {"type": "string"},
+                        "price": {"type": "number"},
+                        "stock": {"type": "integer"},
+                    },
+                },
+            },
+        },
+        "paths": {
+            "/api/login": {
+                "post": {
+                    "summary": "Login and receive JWT, refresh token, and session id",
+                    "requestBody": {
+                        "required": True,
+                        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LoginRequest"}}},
+                    },
+                    "responses": {"200": {"description": "Tokens issued"}, "401": {"description": "Invalid credentials"}},
+                }
+            },
+            "/api/refresh": {
+                "post": {
+                    "summary": "Issue a new dynamic JWT using a reusable vulnerable refresh token",
+                    "requestBody": {
+                        "required": True,
+                        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RefreshRequest"}}},
+                    },
+                    "responses": {"200": {"description": "New JWT issued"}, "401": {"description": "Refresh failed"}},
+                }
+            },
+            "/api/validate": {
+                "get": {
+                    "summary": "Validate bearer token using intentionally weak JWT validation",
+                    "security": [{"bearerAuth": []}],
+                    "responses": {"200": {"description": "Token accepted"}, "401": {"description": "Token rejected"}},
+                }
+            },
+            "/api/admin/products": {
+                "get": {
+                    "summary": "Admin list products with prices",
+                    "security": [{"bearerAuth": []}],
+                    "responses": {"200": {"description": "Product list"}, "403": {"description": "Role forbidden"}},
+                },
+                "post": {
+                    "summary": "Admin create product",
+                    "security": [{"bearerAuth": []}],
+                    "requestBody": {
+                        "required": True,
+                        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Product"}}},
+                    },
+                    "responses": {"201": {"description": "Product created"}},
+                },
+                "delete": {
+                    "summary": "Admin delete product by sku query parameter",
+                    "security": [{"bearerAuth": []}],
+                    "parameters": [{"name": "sku", "in": "query", "required": True, "schema": {"type": "string"}}],
+                    "responses": {"200": {"description": "Product deleted"}},
+                },
+            },
+            "/api/admin/products/push": {
+                "post": {
+                    "summary": "Swagger-friendly alias for custom HTTP PUSH edit",
+                    "security": [{"bearerAuth": []}],
+                    "requestBody": {
+                        "required": True,
+                        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Product"}}},
+                    },
+                    "responses": {"200": {"description": "Product edited"}},
+                }
+            },
+            "/api/user/products": {
+                "get": {
+                    "summary": "User list products without prices",
+                    "security": [{"bearerAuth": []}],
+                    "responses": {"200": {"description": "Catalog list"}},
+                },
+                "post": {
+                    "summary": "User write attempt, expected to return 403",
+                    "security": [{"bearerAuth": []}],
+                    "responses": {"403": {"description": "Users can only GET"}},
+                },
+            },
+            "/api/audit": {"get": {"summary": "Read HTTP/auth audit events", "responses": {"200": {"description": "Audit log"}}}},
+        },
+    }
+
+
+def xml_openapi_spec():
+    return {
+        "openapi": "3.0.3",
+        "info": {
+            "title": "Vulnerable SOAP Lab - XML/SOAP API",
+            "version": "1.0.0",
+            "description": "Swagger-style documentation for the XML/SOAP attack lab. SOAPAction selects the operation.",
+        },
+        "servers": [{"url": public_base_url()}],
+        "components": {
+            "securitySchemes": {
+                "bearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}
+            }
+        },
+        "paths": {
+            "/soap?wsdl": {"get": {"summary": "Download WSDL", "responses": {"200": {"description": "WSDL XML"}}}},
+            "/soap": {
+                "post": {
+                    "summary": "SOAP endpoint for Login, RefreshToken, ValidateToken, GetAccount, TransferFunds, SearchUser, Logout",
+                    "parameters": [
+                        {
+                            "name": "SOAPAction",
+                            "in": "header",
+                            "required": True,
+                            "schema": {
+                                "type": "string",
+                                "enum": [
+                                    "Login",
+                                    "RefreshToken",
+                                    "ValidateToken",
+                                    "GetAccount",
+                                    "TransferFunds",
+                                    "SearchUser",
+                                    "Logout",
+                                ],
+                            },
+                        }
+                    ],
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "text/xml": {
+                                "schema": {"type": "string"},
+                                "example": "<?xml version=\"1.0\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\"><soap:Body><lab:Login><lab:Username>admin_aurora</lab:Username><lab:Password>R9v!tQ2mZx#4</lab:Password></lab:Login></soap:Body></soap:Envelope>",
+                            },
+                            "application/xml": {"schema": {"type": "string"}},
+                        },
+                    },
+                    "responses": {"200": {"description": "SOAP XML response"}, "401": {"description": "SOAP auth fault"}},
+                }
+            },
+            "/admin/products": {
+                "get": {"summary": "XML admin product list", "security": [{"bearerAuth": []}], "responses": {"200": {"description": "XML response"}}},
+                "post": {"summary": "XML admin create product", "security": [{"bearerAuth": []}], "responses": {"201": {"description": "XML response"}}},
+                "delete": {"summary": "XML admin delete product", "security": [{"bearerAuth": []}], "responses": {"200": {"description": "XML response"}}},
+            },
+            "/user/products": {
+                "get": {"summary": "XML user product list", "security": [{"bearerAuth": []}], "responses": {"200": {"description": "XML response"}}}
+            },
+            "/audit": {"get": {"summary": "XML audit log", "responses": {"200": {"description": "XML audit events"}}}},
+        },
+    }
+
+
 class VulnerableSoapDastHandler(server.SoapDastHandler):
     server_version = "VulnerableSoapDastLab/1.0"
+
+    def send_json_api(self, status, data, headers=None):
+        raw = json.dumps(data, indent=2).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(raw)))
+        self.send_header("X-DAST-Lab", "vulnerable-rest-json")
+        self.send_header("Cache-Control", "no-store")
+        if headers:
+            for key, value in headers.items():
+                self.send_header(key, value)
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def read_json_api_body(self):
+        length = int(self.headers.get("Content-Length", "0"))
+        raw_body = self.rfile.read(length).decode("utf-8", errors="replace")
+        if not raw_body.strip():
+            return {}
+        return json.loads(raw_body)
 
     def do_TRACE(self):
         length = int(self.headers.get("Content-Length", "0"))
@@ -77,13 +287,60 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/swagger":
+            self.send_json_api(
+                200,
+                {
+                    "rest_json": "/swagger/rest.json",
+                    "xml_soap": "/swagger/xml.json",
+                    "rest_base": "/api",
+                    "xml_base": "/soap",
+                },
+            )
+            return
+        if parsed.path == "/swagger/rest.json":
+            self.send_json_api(200, rest_openapi_spec())
+            return
+        if parsed.path == "/swagger/xml.json":
+            self.send_json_api(200, xml_openapi_spec())
+            return
+        if parsed.path == "/api":
+            self.send_json_api(
+                200,
+                {
+                    "name": "Vulnerable SOAP Lab REST JSON API",
+                    "swagger": "/swagger/rest.json",
+                    "login": "/api/login",
+                    "refresh": "/api/refresh",
+                    "validate": "/api/validate",
+                    "admin_products": "/api/admin/products",
+                    "user_products": "/api/user/products",
+                    "audit": "/api/audit",
+                },
+            )
+            return
+        if parsed.path == "/api/audit":
+            self.send_json_api(200, {"events": server.AUDIT_LOG[-50:]})
+            return
+        if parsed.path == "/api/validate":
+            self.rest_validate_token()
+            return
+        if parsed.path == "/api/admin/products":
+            self.rest_admin_products_list()
+            return
+        if parsed.path == "/api/user/products":
+            self.rest_user_products_list()
+            return
         if parsed.path == "/":
-            self.send_json(
+            self.send_json_api(
                 200,
                 {
                     "name": "Vulnerable SOAP DAST Lab",
                     "soap": "/soap",
                     "wsdl": "/soap?wsdl",
+                    "rest_json": "/api",
+                    "swagger_rest_json": "/swagger/rest.json",
+                    "swagger_xml_soap": "/swagger/xml.json",
                     "verbs": "/verbs",
                     "audit": "/audit",
                     "vulnerabilities": [
@@ -104,8 +361,24 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
         super().do_GET()
 
     def do_POST(self):
-        if urlparse(self.path).path != "/soap":
-            self.send_json(404, {"error": "not_found"})
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/login":
+            self.rest_login()
+            return
+        if parsed.path == "/api/refresh":
+            self.rest_refresh_token()
+            return
+        if parsed.path == "/api/admin/products":
+            self.rest_admin_product_create()
+            return
+        if parsed.path == "/api/admin/products/push":
+            self.rest_admin_product_edit()
+            return
+        if parsed.path == "/api/user/products":
+            self.rest_user_write_forbidden("POST")
+            return
+        if parsed.path != "/soap":
+            self.send_json_api(404, {"error": "not_found"})
             return
 
         length = int(self.headers.get("Content-Length", "0"))
@@ -160,6 +433,258 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
             )
             return
         handler(root)
+
+    def do_PUSH(self):
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/admin/products":
+            self.rest_admin_product_edit()
+            return
+        if parsed.path == "/api/user/products":
+            self.rest_user_write_forbidden("PUSH")
+            return
+        super().do_PUSH()
+
+    def do_DELETE(self):
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/admin/products":
+            self.rest_admin_product_delete(parsed)
+            return
+        if parsed.path == "/api/user/products":
+            self.rest_user_write_forbidden("DELETE")
+            return
+        super().do_DELETE()
+
+    def require_rest_role(self, expected_role):
+        payload, error = self.require_auth()
+        if error:
+            return None, 401, {"error": error}
+        if payload.get("role") != expected_role:
+            return None, 403, {"error": "forbidden_role", "required_role": expected_role}
+        return payload, None, None
+
+    def rest_login(self):
+        try:
+            data = self.read_json_api_body()
+        except json.JSONDecodeError as exc:
+            self.send_json_api(400, {"error": "invalid_json", "parser_error": str(exc)})
+            return
+        username = str(data.get("username", ""))
+        password = str(data.get("password", ""))
+        user = server.USERS.get(username)
+        if not user or user["password"] != password:
+            self.log_auth_event("vulnerable_rest_login", "failure", username=username, error="invalid_credentials")
+            self.send_json_api(401, {"error": "invalid_credentials"})
+            return
+        access_token, refresh_token, session_id, claims = server.issue_tokens(username)
+        fixed_session = self.headers.get("X-Fixed-Session-Id")
+        if fixed_session:
+            server.SESSIONS[fixed_session] = server.SESSIONS.pop(session_id)
+            server.REFRESH_TOKENS[refresh_token]["session_id"] = fixed_session
+            access_token, claims = server.make_jwt(username, user["role"], fixed_session)
+            session_id = fixed_session
+        self.log_auth_event(
+            "vulnerable_rest_login",
+            "success",
+            username=username,
+            role=user["role"],
+            session_id=session_id,
+            token_id=claims["jti"],
+            details={
+                "access_token_fingerprint": server.token_fingerprint(access_token),
+                "refresh_token_fingerprint": server.token_fingerprint(refresh_token),
+                "session_fixation_used": bool(fixed_session),
+            },
+        )
+        self.send_json_api(
+            200,
+            {
+                "accessToken": access_token,
+                "refreshToken": refresh_token,
+                "sessionId": session_id,
+                "expiresAt": claims["exp"],
+                "tokenId": claims["jti"],
+                "vulnerableMode": True,
+            },
+            headers={"Set-Cookie": f"DASTSESSION={session_id}; Path=/"},
+        )
+
+    def rest_refresh_token(self):
+        try:
+            data = self.read_json_api_body()
+        except json.JSONDecodeError as exc:
+            self.send_json_api(400, {"error": "invalid_json", "parser_error": str(exc)})
+            return
+        refresh_token = str(data.get("refreshToken") or data.get("refresh_token") or "")
+        record = server.REFRESH_TOKENS.get(refresh_token)
+        if not record:
+            self.log_auth_event(
+                "vulnerable_rest_refresh_token",
+                "failure",
+                error="refresh_token_not_found",
+                details={"refresh_token_fingerprint": server.token_fingerprint(refresh_token)},
+            )
+            self.send_json_api(401, {"error": "refresh_token_not_found"})
+            return
+        user = server.USERS[record["username"]]
+        access_token, claims = server.make_jwt(record["username"], user["role"], record["session_id"])
+        self.log_auth_event(
+            "vulnerable_rest_refresh_token",
+            "success",
+            username=record["username"],
+            role=user["role"],
+            session_id=record["session_id"],
+            token_id=claims["jti"],
+            details={
+                "refresh_token_fingerprint": server.token_fingerprint(refresh_token),
+                "new_access_token_fingerprint": server.token_fingerprint(access_token),
+                "refresh_rotated": False,
+                "vulnerability": "refresh_token_reuse_allowed",
+            },
+        )
+        self.send_json_api(
+            200,
+            {
+                "accessToken": access_token,
+                "refreshToken": refresh_token,
+                "sessionId": record["session_id"],
+                "expiresAt": claims["exp"],
+                "tokenId": claims["jti"],
+                "rotated": False,
+                "vulnerability": "refresh token reuse allowed",
+            },
+        )
+
+    def rest_validate_token(self):
+        payload, error = self.require_auth()
+        if error:
+            self.send_json_api(401, {"error": error})
+            return
+        self.send_json_api(
+            200,
+            {
+                "subject": payload.get("sub"),
+                "role": payload.get("role"),
+                "sessionId": payload.get("sid"),
+                "tokenId": payload.get("jti"),
+                "expiresAt": payload.get("exp"),
+                "vulnerability": "signature and session binding may be bypassed",
+            },
+        )
+
+    def rest_admin_products_list(self):
+        payload, status, error = self.require_rest_role("admin")
+        if error:
+            self.send_json_api(status, error)
+            return
+        self.send_json_api(
+            200,
+            {
+                "path": "/api/admin/products",
+                "authenticatedAs": payload.get("sub"),
+                "products": [product_for_admin(sku, product) for sku, product in server.PRODUCTS.items()],
+            },
+        )
+
+    def rest_user_products_list(self):
+        payload, status, error = self.require_rest_role("user")
+        if error:
+            self.send_json_api(status, error)
+            return
+        self.send_json_api(
+            200,
+            {
+                "path": "/api/user/products",
+                "authenticatedAs": payload.get("sub"),
+                "catalog": [product_for_user(sku, product) for sku, product in server.PRODUCTS.items()],
+            },
+        )
+
+    def rest_admin_product_create(self):
+        payload, status, error = self.require_rest_role("admin")
+        if error:
+            self.send_json_api(status, error)
+            return
+        try:
+            data = self.read_json_api_body()
+            sku = str(data.get("sku", "")).strip()
+            name = str(data.get("name", "")).strip()
+            price = float(data.get("price"))
+            stock = int(data.get("stock", 0))
+        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            self.send_json_api(400, {"error": "invalid_json", "parser_error": str(exc)})
+            return
+        if not sku or not name:
+            self.send_json_api(400, {"error": "missing_required_fields"})
+            return
+        if sku in server.PRODUCTS:
+            self.send_json_api(409, {"error": "product_already_exists", "sku": sku})
+            return
+        server.PRODUCTS[sku] = {"name": name, "price": round(price, 2), "stock": stock}
+        self.send_json_api(201, {"createdBy": payload.get("sub"), "product": product_for_admin(sku, server.PRODUCTS[sku])})
+
+    def rest_admin_product_edit(self):
+        payload, status, error = self.require_rest_role("admin")
+        if error:
+            self.send_json_api(status, error)
+            return
+        try:
+            data = self.read_json_api_body()
+            sku = str(data.get("sku", "")).strip()
+        except json.JSONDecodeError as exc:
+            self.send_json_api(400, {"error": "invalid_json", "parser_error": str(exc)})
+            return
+        if sku not in server.PRODUCTS:
+            self.send_json_api(404, {"error": "product_not_found", "sku": sku})
+            return
+        before = product_for_admin(sku, server.PRODUCTS[sku])
+        if "name" in data:
+            server.PRODUCTS[sku]["name"] = str(data["name"])
+        if "price" in data:
+            server.PRODUCTS[sku]["price"] = round(float(data["price"]), 2)
+        if "stock" in data:
+            server.PRODUCTS[sku]["stock"] = int(data["stock"])
+        self.send_json_api(
+            200,
+            {
+                "method": self.command,
+                "updatedBy": payload.get("sub"),
+                "before": before,
+                "after": product_for_admin(sku, server.PRODUCTS[sku]),
+            },
+        )
+
+    def rest_admin_product_delete(self, parsed):
+        payload, status, error = self.require_rest_role("admin")
+        if error:
+            self.send_json_api(status, error)
+            return
+        sku = parse_qs(parsed.query, keep_blank_values=True).get("sku", [""])[0]
+        if not sku:
+            try:
+                sku = str(self.read_json_api_body().get("sku", ""))
+            except json.JSONDecodeError as exc:
+                self.send_json_api(400, {"error": "invalid_json", "parser_error": str(exc)})
+                return
+        if sku not in server.PRODUCTS:
+            self.send_json_api(404, {"error": "product_not_found", "sku": sku})
+            return
+        deleted = server.PRODUCTS.pop(sku)
+        self.send_json_api(200, {"deletedBy": payload.get("sub"), "deleted": product_for_admin(sku, deleted)})
+
+    def rest_user_write_forbidden(self, method):
+        payload, error = self.require_auth()
+        if error:
+            self.send_json_api(401, {"error": error})
+            return
+        self.send_json_api(
+            403,
+            {
+                "error": "forbidden_method",
+                "role": payload.get("role"),
+                "method": method,
+                "allowedMethods": ["GET"],
+            },
+        )
 
     def require_auth(self):
         token = self.bearer_token() or self.headers.get("X-Session-Token", "")

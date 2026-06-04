@@ -1,18 +1,15 @@
 services:
-  soap-dast-lab:
+  soap-lab-vulnerable:
     build:
       context: .
     image: soap-dast-lab:latest
-    container_name: soap-dast-lab
+    container_name: soap-lab-vulnerable
     environment:
-      APP_MODE: both
+      APP_MODE: vulnerable
       SOAP_DAST_HOST: 0.0.0.0
       SOAP_DAST_PUBLIC_HOST: 127.0.0.1
-      SOAP_DAST_PORT: 8088
-      SOAP_DAST_PUBLIC_PORT: 8088
       SOAP_DAST_VULN_PORT: 8089
       SOAP_DAST_VULN_PUBLIC_PORT: 8089
     ports:
-      - "8088:8088"
       - "8089:8089"
     restart: unless-stopped

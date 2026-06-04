@@ -1,8 +1,8 @@
 ### WSDL
-GET http://127.0.0.1:8088/soap?wsdl
+GET http://127.0.0.1:8089/soap?wsdl
 
 ### Login
-POST http://127.0.0.1:8088/soap
+POST http://127.0.0.1:8089/soap
 Content-Type: text/xml
 SOAPAction: Login
 
@@ -17,7 +17,7 @@ SOAPAction: Login
 </soap:Envelope>
 
 ### ValidateToken
-POST http://127.0.0.1:8088/soap
+POST http://127.0.0.1:8089/soap
 Content-Type: text/xml
 SOAPAction: ValidateToken
 Authorization: Bearer {{access_token}}
@@ -31,7 +31,7 @@ Cookie: DASTSESSION={{session_id}}
 </soap:Envelope>
 
 ### GetAccount
-POST http://127.0.0.1:8088/soap
+POST http://127.0.0.1:8089/soap
 Content-Type: text/xml
 SOAPAction: GetAccount
 Authorization: Bearer {{access_token}}
@@ -47,7 +47,7 @@ Cookie: DASTSESSION={{session_id}}
 </soap:Envelope>
 
 ### TransferFunds
-POST http://127.0.0.1:8088/soap
+POST http://127.0.0.1:8089/soap
 Content-Type: text/xml
 SOAPAction: TransferFunds
 Authorization: Bearer {{access_token}}
@@ -64,7 +64,7 @@ Cookie: DASTSESSION={{session_id}}
 </soap:Envelope>
 
 ### SearchUser fuzz target
-POST http://127.0.0.1:8088/soap
+POST http://127.0.0.1:8089/soap
 Content-Type: text/xml
 SOAPAction: SearchUser
 Authorization: Bearer {{access_token}}
@@ -80,7 +80,7 @@ Cookie: DASTSESSION={{session_id}}
 </soap:Envelope>
 
 ### RefreshToken
-POST http://127.0.0.1:8088/soap
+POST http://127.0.0.1:8089/soap
 Content-Type: text/xml
 SOAPAction: RefreshToken
 
@@ -94,12 +94,12 @@ SOAPAction: RefreshToken
 </soap:Envelope>
 
 ### HTTP verb discovery
-OPTIONS http://127.0.0.1:8088/verbs
+OPTIONS http://127.0.0.1:8089/verbs
 
 ### Authenticated PUT verb probe
-PUT http://127.0.0.1:8088/verbs
+PUT http://127.0.0.1:8089/verbs
 Authorization: Bearer {{access_token}}
 Cookie: DASTSESSION={{session_id}}
 
 ### TRACE should be rejected
-TRACE http://127.0.0.1:8088/verbs
+TRACE http://127.0.0.1:8089/verbs

@@ -25,18 +25,6 @@ az containerapp env create \
   --location "${LOCATION}" >/dev/null 2>&1 || true
 
 az containerapp create \
-  --name soap-dast-lab-safe \
-  --resource-group "${RESOURCE_GROUP}" \
-  --environment "${ENVIRONMENT_NAME}" \
-  --image "${IMAGE_URI}" \
-  --target-port 8088 \
-  --ingress external \
-  --registry-server "${ACR_NAME}.azurecr.io" \
-  --registry-username "${ACR_USERNAME}" \
-  --registry-password "${ACR_PASSWORD}" \
-  --env-vars APP_MODE=safe SOAP_DAST_HOST=0.0.0.0 SOAP_DAST_PORT=8088 SOAP_DAST_PUBLIC_PORT=443
-
-az containerapp create \
   --name soap-dast-lab-vulnerable \
   --resource-group "${RESOURCE_GROUP}" \
   --environment "${ENVIRONMENT_NAME}" \
@@ -48,20 +36,16 @@ az containerapp create \
   --registry-password "${ACR_PASSWORD}" \
   --env-vars APP_MODE=vulnerable SOAP_DAST_HOST=0.0.0.0 SOAP_DAST_VULN_PORT=8089 SOAP_DAST_VULN_PUBLIC_PORT=443
 
-SAFE_FQDN="$(az containerapp show --name soap-dast-lab-safe --resource-group "${RESOURCE_GROUP}" --query properties.configuration.ingress.fqdn -o tsv)"
 VULN_FQDN="$(az containerapp show --name soap-dast-lab-vulnerable --resource-group "${RESOURCE_GROUP}" --query properties.configuration.ingress.fqdn -o tsv)"
-
-az containerapp update \
-  --name soap-dast-lab-safe \
-  --resource-group "${RESOURCE_GROUP}" \
-  --set-env-vars APP_MODE=safe SOAP_DAST_HOST=0.0.0.0 SOAP_DAST_PORT=8088 SOAP_DAST_PUBLIC_HOST="${SAFE_FQDN}" SOAP_DAST_PUBLIC_PORT=443 >/dev/null
 
 az containerapp update \
   --name soap-dast-lab-vulnerable \
   --resource-group "${RESOURCE_GROUP}" \
   --set-env-vars APP_MODE=vulnerable SOAP_DAST_HOST=0.0.0.0 SOAP_DAST_VULN_PORT=8089 SOAP_DAST_PUBLIC_HOST="${VULN_FQDN}" SOAP_DAST_VULN_PUBLIC_PORT=443 >/dev/null
 
-echo "Safe app URL:"
-echo "https://${SAFE_FQDN}/soap?wsdl"
 echo "Vulnerable app URL:"
 echo "https://${VULN_FQDN}/soap?wsdl"
+echo "REST Swagger:"
+echo "https://${VULN_FQDN}/swagger/rest.json"
+echo "XML/SOAP Swagger:"
+echo "https://${VULN_FQDN}/swagger/xml.json"
