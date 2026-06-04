@@ -378,7 +378,7 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
             self.rest_user_write_forbidden("POST")
             return
         if parsed.path != "/soap":
-            self.send_json_api(404, {"error": "not_found"})
+            super().do_POST()
             return
 
         length = int(self.headers.get("Content-Length", "0"))
