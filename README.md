@@ -339,6 +339,112 @@ That proves the refresh token rotation is working.
 
 ---
 
+## How Authentication Works
+
+The authentication flow has four small pieces:
+
+1. **Username and password**
+   - The user sends credentials to the SOAP `Login` operation.
+   - If they are correct, the API creates a session.
+
+2. **Access token**
+   - The API returns an `AccessToken`.
+   - This token is a JWT.
+   - It is used in protected routes with:
+
+```text
+Authorization: Bearer YOUR_ACCESS_TOKEN
+```
+
+3. **Dynamic JWT**
+   - The JWT is dynamic because every login and refresh creates a new token.
+   - The fields `iat`, `exp`, and `jti` change.
+   - `iat` means "issued at".
+   - `exp` means "expires at".
+   - `jti` is the unique token id.
+   - The access token expires after **3 minutes**.
+
+4. **Refresh token**
+   - When the access token expires, call SOAP `RefreshToken`.
+   - The secure app returns a new access token and a new refresh token.
+   - The old refresh token cannot be used again.
+   - This is called refresh token rotation.
+
+Simple picture:
+
+```text
+Login -> AccessToken + RefreshToken
+Use AccessToken for routes
+AccessToken expires after 3 minutes
+RefreshToken -> New AccessToken + New RefreshToken
+Continue using protected routes
+```
+
+Protected routes include:
+
+- `GET /admin/products`
+- `POST /admin/products`
+- `PUSH /admin/products`
+- `DELETE /admin/products`
+- `GET /user/products`
+- SOAP operations like `ValidateToken`, `GetAccount`, `TransferFunds`, `SearchUser`, and `Logout`
+
+All authentication events are logged in `/audit`.
+
+The API logs:
+
+- Successful login.
+- Failed login.
+- Missing access token.
+- Valid access token.
+- Invalid access token.
+- Expired access token.
+- Session cookie mismatch.
+- Refresh token success.
+- Refresh token failure.
+- Refresh token reuse.
+- Logout.
+
+Important: the app does **not** log raw tokens. It logs token fingerprints, which are short SHA-256 hashes. This lets you trace a token safely without exposing the real token.
+
+Read logs:
+
+```bash
+curl -s 'http://127.0.0.1:8088/audit'
+```
+
+Example auth log:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<response>
+  <event>
+    <type>auth</type>
+    <event>refresh_token</event>
+    <status>success</status>
+    <username>admin_aurora</username>
+    <role>admin</role>
+    <session_id>session-id</session_id>
+    <token_id>new-jwt-id</token_id>
+    <details>
+      <old_refresh_token_fingerprint>abc123...</old_refresh_token_fingerprint>
+      <new_refresh_token_fingerprint>def456...</new_refresh_token_fingerprint>
+      <refresh_rotated>True</refresh_rotated>
+    </details>
+  </event>
+</response>
+```
+
+For fuzzing, this is useful because you can prove what happened:
+
+- Did the scanner send no token?
+- Did the JWT expire?
+- Did the scanner reuse an old refresh token?
+- Did a user token try an admin route?
+- Did the refresh flow issue a new dynamic JWT?
+
+---
+
 ## Refresh Token: Continuar Depois De 3 Minutos
 
 Espere 3 minutos, ou continue usando a aplicacao ate o access token expirar.
@@ -382,6 +488,112 @@ Isso prova que a rotacao do refresh token esta funcionando.
 
 ---
 
+## Como A Autenticacao Funciona
+
+O fluxo de autenticacao tem quatro pecas pequenas:
+
+1. **Usuario e senha**
+   - O usuario envia credenciais para a operacao SOAP `Login`.
+   - Se estiver correto, a API cria uma sessao.
+
+2. **Access token**
+   - A API retorna um `AccessToken`.
+   - Esse token e um JWT.
+   - Ele e usado nas rotas protegidas com:
+
+```text
+Authorization: Bearer YOUR_ACCESS_TOKEN
+```
+
+3. **JWT dinamico**
+   - O JWT e dinamico porque cada login e cada refresh cria um token novo.
+   - Os campos `iat`, `exp` e `jti` mudam.
+   - `iat` significa "emitido em".
+   - `exp` significa "expira em".
+   - `jti` e o id unico do token.
+   - O access token expira depois de **3 minutos**.
+
+4. **Refresh token**
+   - Quando o access token expira, chame a operacao SOAP `RefreshToken`.
+   - A aplicacao segura retorna um novo access token e um novo refresh token.
+   - O refresh token antigo nao pode ser usado novamente.
+   - Isso se chama rotacao de refresh token.
+
+Desenho simples:
+
+```text
+Login -> AccessToken + RefreshToken
+Usa AccessToken nas rotas
+AccessToken expira depois de 3 minutos
+RefreshToken -> Novo AccessToken + Novo RefreshToken
+Continua usando as rotas protegidas
+```
+
+Rotas protegidas incluem:
+
+- `GET /admin/products`
+- `POST /admin/products`
+- `PUSH /admin/products`
+- `DELETE /admin/products`
+- `GET /user/products`
+- Operacoes SOAP como `ValidateToken`, `GetAccount`, `TransferFunds`, `SearchUser` e `Logout`
+
+Todos os eventos de autenticacao sao logados em `/audit`.
+
+A API registra:
+
+- Login com sucesso.
+- Falha de login.
+- Access token ausente.
+- Access token valido.
+- Access token invalido.
+- Access token expirado.
+- Cookie de sessao divergente.
+- Refresh token com sucesso.
+- Falha de refresh token.
+- Reuso de refresh token.
+- Logout.
+
+Importante: a app **nao** grava tokens reais no log. Ela grava fingerprints dos tokens, que sao hashes SHA-256 curtos. Assim voce consegue rastrear o token sem expor o token verdadeiro.
+
+Ler logs:
+
+```bash
+curl -s 'http://127.0.0.1:8088/audit'
+```
+
+Exemplo de log de autenticacao:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<response>
+  <event>
+    <type>auth</type>
+    <event>refresh_token</event>
+    <status>success</status>
+    <username>admin_aurora</username>
+    <role>admin</role>
+    <session_id>session-id</session_id>
+    <token_id>new-jwt-id</token_id>
+    <details>
+      <old_refresh_token_fingerprint>abc123...</old_refresh_token_fingerprint>
+      <new_refresh_token_fingerprint>def456...</new_refresh_token_fingerprint>
+      <refresh_rotated>True</refresh_rotated>
+    </details>
+  </event>
+</response>
+```
+
+Para fuzzing, isso e util porque voce consegue provar o que aconteceu:
+
+- O scanner mandou token vazio?
+- O JWT expirou?
+- O scanner reutilizou refresh token antigo?
+- Um token de user tentou rota admin?
+- O refresh emitiu um novo JWT dinamico?
+
+---
+
 ## Admin Product Tests
 
 Admins can list, create, edit, and delete products.
@@ -397,18 +609,18 @@ Create:
 
 ```bash
 curl -s -X POST 'http://127.0.0.1:8088/admin/products' \
-  -H 'Content-Type: application/json' \
+  -H 'Content-Type: application/xml' \
   -H 'Authorization: Bearer ADMIN_ACCESS_TOKEN' \
-  --data '{"sku":"SKU-600","name":"Headset Prisma ANC","price":599.90,"stock":14}'
+  --data '<product><sku>SKU-600</sku><name>Headset Prisma ANC</name><price>599.90</price><stock>14</stock></product>'
 ```
 
 Edit with custom `PUSH`:
 
 ```bash
 curl -s -X PUSH 'http://127.0.0.1:8088/admin/products' \
-  -H 'Content-Type: application/json' \
+  -H 'Content-Type: application/xml' \
   -H 'Authorization: Bearer ADMIN_ACCESS_TOKEN' \
-  --data '{"sku":"SKU-600","price":499.90,"stock":20}'
+  --data '<product><sku>SKU-600</sku><price>499.90</price><stock>20</stock></product>'
 ```
 
 Delete:
@@ -435,18 +647,18 @@ Criar:
 
 ```bash
 curl -s -X POST 'http://127.0.0.1:8088/admin/products' \
-  -H 'Content-Type: application/json' \
+  -H 'Content-Type: application/xml' \
   -H 'Authorization: Bearer ADMIN_ACCESS_TOKEN' \
-  --data '{"sku":"SKU-600","name":"Headset Prisma ANC","price":599.90,"stock":14}'
+  --data '<product><sku>SKU-600</sku><name>Headset Prisma ANC</name><price>599.90</price><stock>14</stock></product>'
 ```
 
 Editar com verbo customizado `PUSH`:
 
 ```bash
 curl -s -X PUSH 'http://127.0.0.1:8088/admin/products' \
-  -H 'Content-Type: application/json' \
+  -H 'Content-Type: application/xml' \
   -H 'Authorization: Bearer ADMIN_ACCESS_TOKEN' \
-  --data '{"sku":"SKU-600","price":499.90,"stock":20}'
+  --data '<product><sku>SKU-600</sku><price>499.90</price><stock>20</stock></product>'
 ```
 
 Deletar:
@@ -471,9 +683,9 @@ If a user tries to create, edit, or delete, the app returns `403`.
 
 ```bash
 curl -i -X POST 'http://127.0.0.1:8088/user/products' \
-  -H 'Content-Type: application/json' \
+  -H 'Content-Type: application/xml' \
   -H 'Authorization: Bearer USER_ACCESS_TOKEN' \
-  --data '{"sku":"SKU-700","name":"Blocked Product","price":10,"stock":1}'
+  --data '<product><sku>SKU-700</sku><name>Blocked Product</name><price>10</price><stock>1</stock></product>'
 ```
 
 ---
@@ -491,9 +703,9 @@ Se um user tentar criar, editar ou deletar, a aplicacao retorna `403`.
 
 ```bash
 curl -i -X POST 'http://127.0.0.1:8088/user/products' \
-  -H 'Content-Type: application/json' \
+  -H 'Content-Type: application/xml' \
   -H 'Authorization: Bearer USER_ACCESS_TOKEN' \
-  --data '{"sku":"SKU-700","name":"Blocked Product","price":10,"stock":1}'
+  --data '<product><sku>SKU-700</sku><name>Blocked Product</name><price>10</price><stock>1</stock></product>'
 ```
 
 ---

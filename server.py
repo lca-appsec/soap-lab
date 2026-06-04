@@ -112,6 +112,12 @@ def now():
     return int(time.time())
 
 
+def token_fingerprint(token):
+    if not token:
+        return ""
+    return hashlib.sha256(token.encode()).hexdigest()[:16]
+
+
 def make_jwt(username, role, session_id):
     issued_at = now()
     header = {"typ": "JWT", "alg": "HS256"}
@@ -159,10 +165,14 @@ def verify_jwt(token):
 
 
 def xml_text(root, name):
+    fallback = ""
     for element in root.iter():
         if element.tag.split("}")[-1] == name:
-            return element.text or ""
-    return ""
+            value = element.text or ""
+            if value.strip():
+                return value
+            fallback = value
+    return fallback
 
 
 def soap_envelope(body_xml):
@@ -188,6 +198,38 @@ def response_element(action, fields):
         lines.append(f"      <lab:{key}>{escape_xml(str(value))}</lab:{key}>")
     lines.append(f"    </lab:{action}Response>")
     return soap_envelope("\n".join(lines))
+
+
+def safe_xml_tag(value):
+    tag = "".join(ch if ch.isalnum() or ch in "_-" else "_" for ch in str(value))
+    if not tag or tag[0].isdigit():
+        tag = f"item_{tag}"
+    return tag
+
+
+def value_to_xml(name, value, indent=0):
+    space = " " * indent
+    tag = safe_xml_tag(name)
+    if isinstance(value, dict):
+        lines = [f"{space}<{tag}>"]
+        for child_key, child_value in value.items():
+            lines.append(value_to_xml(child_key, child_value, indent + 2))
+        lines.append(f"{space}</{tag}>")
+        return "\n".join(lines)
+    if isinstance(value, list):
+        lines = [f"{space}<{tag}>"]
+        item_name = tag[:-1] if tag.endswith("s") and len(tag) > 1 else "item"
+        for item in value:
+            lines.append(value_to_xml(item_name, item, indent + 2))
+        lines.append(f"{space}</{tag}>")
+        return "\n".join(lines)
+    if value is None:
+        value = ""
+    return f"{space}<{tag}>{escape_xml(str(value))}</{tag}>"
+
+
+def xml_document(root_name, data):
+    return '<?xml version="1.0" encoding="UTF-8"?>\n' + value_to_xml(root_name, data) + "\n"
 
 
 def escape_xml(value):
@@ -278,6 +320,7 @@ class SoapDastHandler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         AUDIT_LOG.append(
             {
+                "type": "http",
                 "time": now(),
                 "client": self.client_address[0],
                 "method": self.command,
@@ -286,6 +329,39 @@ class SoapDastHandler(BaseHTTPRequestHandler):
             }
         )
         super().log_message(fmt, *args)
+
+    def log_auth_event(
+        self,
+        event,
+        status,
+        username=None,
+        role=None,
+        session_id=None,
+        token_id=None,
+        error=None,
+        details=None,
+    ):
+        entry = {
+            "type": "auth",
+            "time": now(),
+            "client": self.client_address[0],
+            "method": self.command,
+            "path": self.path,
+            "event": event,
+            "status": status,
+        }
+        optional = {
+            "username": username,
+            "role": role,
+            "session_id": session_id,
+            "token_id": token_id,
+            "error": error,
+            "details": details,
+        }
+        for key, value in optional.items():
+            if value not in (None, "", {}):
+                entry[key] = value
+        AUDIT_LOG.append(entry)
 
     def send_body(self, status, body, content_type="application/xml", headers=None):
         raw = body.encode("utf-8")
@@ -301,7 +377,7 @@ class SoapDastHandler(BaseHTTPRequestHandler):
         self.wfile.write(raw)
 
     def send_json(self, status, data, headers=None):
-        self.send_body(status, json.dumps(data, indent=2), "application/json", headers)
+        self.send_body(status, xml_document("response", data), "application/xml", headers)
 
     def do_OPTIONS(self):
         self.send_response(204)
@@ -479,10 +555,20 @@ class SoapDastHandler(BaseHTTPRequestHandler):
             },
         )
 
-    def read_json_body(self):
+    def read_structured_body(self):
         length = int(self.headers.get("Content-Length", "0"))
         raw_body = self.rfile.read(length).decode("utf-8", errors="replace")
-        return json.loads(raw_body or "{}")
+        content_type = self.headers.get("Content-Type", "")
+        if "json" in content_type:
+            return json.loads(raw_body or "{}")
+        if not raw_body.strip():
+            return {}
+        root = ElementTree.fromstring(raw_body)
+        return {
+            child.tag.split("}")[-1]: (child.text or "")
+            for child in root.iter()
+            if child is not root and len(list(child)) == 0
+        }
 
     def handle_user_write_forbidden(self, method):
         payload, error = self.require_auth()
@@ -517,16 +603,16 @@ class SoapDastHandler(BaseHTTPRequestHandler):
             return
 
         try:
-            data = self.read_json_body()
+            data = self.read_structured_body()
             sku = str(data.get("sku", "")).strip()
             name = str(data.get("name", "")).strip()
             price = float(data.get("price"))
             stock = int(data.get("stock", 0))
-        except (TypeError, ValueError, json.JSONDecodeError):
+        except (TypeError, ValueError, json.JSONDecodeError, ElementTree.ParseError):
             self.send_json(
                 400,
                 {
-                    "error": "invalid_json",
+                    "error": "invalid_xml",
                     "expected": {"sku": "SKU-600", "name": "Produto Demo", "price": 199.90, "stock": 10},
                 },
             )
@@ -561,10 +647,10 @@ class SoapDastHandler(BaseHTTPRequestHandler):
             return
 
         try:
-            data = self.read_json_body()
+            data = self.read_structured_body()
             sku = str(data.get("sku", ""))
-        except json.JSONDecodeError:
-            self.send_json(400, {"error": "invalid_json", "expected": {"sku": "SKU-100", "price": 4299.90}})
+        except (json.JSONDecodeError, ElementTree.ParseError):
+            self.send_json(400, {"error": "invalid_xml", "expected": {"sku": "SKU-100", "price": 4299.90}})
             return
 
         if sku not in PRODUCTS:
@@ -621,9 +707,9 @@ class SoapDastHandler(BaseHTTPRequestHandler):
         sku = query.get("sku", [""])[0]
         if not sku:
             try:
-                sku = str(self.read_json_body().get("sku", ""))
-            except json.JSONDecodeError:
-                self.send_json(400, {"error": "invalid_json", "expected": {"sku": "SKU-100"}})
+                sku = str(self.read_structured_body().get("sku", ""))
+            except (json.JSONDecodeError, ElementTree.ParseError):
+                self.send_json(400, {"error": "invalid_xml", "expected": {"sku": "SKU-100"}})
                 return
         if sku not in PRODUCTS:
             self.send_json(404, {"error": "product_not_found", "sku": sku})
@@ -712,13 +798,42 @@ class SoapDastHandler(BaseHTTPRequestHandler):
     def require_auth(self):
         token = self.bearer_token() or self.headers.get("X-Session-Token", "")
         if not token:
+            self.log_auth_event("access_token_missing", "failure", error="missing_bearer_token")
             return None, "missing_bearer_token"
         payload, error = verify_jwt(token)
         if error:
+            self.log_auth_event(
+                "access_token_validation",
+                "failure",
+                error=error,
+                details={"access_token_fingerprint": token_fingerprint(token)},
+            )
             return None, error
         cookie_session = self.session_cookie()
         if cookie_session and cookie_session != payload["sid"]:
+            self.log_auth_event(
+                "access_token_validation",
+                "failure",
+                username=payload.get("sub"),
+                role=payload.get("role"),
+                session_id=payload.get("sid"),
+                token_id=payload.get("jti"),
+                error="session_cookie_mismatch",
+                details={
+                    "access_token_fingerprint": token_fingerprint(token),
+                    "cookie_session_id": cookie_session,
+                },
+            )
             return None, "session_cookie_mismatch"
+        self.log_auth_event(
+            "access_token_validation",
+            "success",
+            username=payload.get("sub"),
+            role=payload.get("role"),
+            session_id=payload.get("sid"),
+            token_id=payload.get("jti"),
+            details={"access_token_fingerprint": token_fingerprint(token)},
+        )
         return payload, None
 
     def soap_login(self, root):
@@ -726,9 +841,24 @@ class SoapDastHandler(BaseHTTPRequestHandler):
         password = xml_text(root, "Password")
         user = USERS.get(username)
         if not user or not hmac.compare_digest(user["password"], password):
+            self.log_auth_event("login", "failure", username=username, error="invalid_credentials")
             self.send_body(401, soap_fault("Auth.InvalidCredentials", "Invalid username or password"))
             return
         access_token, refresh_token, session_id, claims = issue_tokens(username)
+        self.log_auth_event(
+            "login",
+            "success",
+            username=username,
+            role=user["role"],
+            session_id=session_id,
+            token_id=claims["jti"],
+            details={
+                "access_token_fingerprint": token_fingerprint(access_token),
+                "refresh_token_fingerprint": token_fingerprint(refresh_token),
+                "access_token_expires_at": claims["exp"],
+                "access_token_ttl_seconds": ACCESS_TOKEN_TTL_SECONDS,
+            },
+        )
         headers = {"Set-Cookie": f"DASTSESSION={session_id}; HttpOnly; SameSite=Lax; Path=/"}
         self.send_body(
             200,
@@ -747,11 +877,33 @@ class SoapDastHandler(BaseHTTPRequestHandler):
 
     def soap_refresh_token(self, root):
         refresh_token = xml_text(root, "RefreshToken")
+        old_refresh_fingerprint = token_fingerprint(refresh_token)
         result, error = rotate_refresh_token(refresh_token)
         if error:
+            self.log_auth_event(
+                "refresh_token",
+                "failure",
+                error=error,
+                details={"refresh_token_fingerprint": old_refresh_fingerprint},
+            )
             self.send_body(401, soap_fault("Auth.RefreshFailed", error))
             return
         access_token, new_refresh_token, session_id, claims = result
+        self.log_auth_event(
+            "refresh_token",
+            "success",
+            username=claims["sub"],
+            role=claims["role"],
+            session_id=session_id,
+            token_id=claims["jti"],
+            details={
+                "old_refresh_token_fingerprint": old_refresh_fingerprint,
+                "new_refresh_token_fingerprint": token_fingerprint(new_refresh_token),
+                "new_access_token_fingerprint": token_fingerprint(access_token),
+                "access_token_expires_at": claims["exp"],
+                "refresh_rotated": True,
+            },
+        )
         headers = {"Set-Cookie": f"DASTSESSION={session_id}; HttpOnly; SameSite=Lax; Path=/"}
         self.send_body(
             200,
@@ -772,8 +924,17 @@ class SoapDastHandler(BaseHTTPRequestHandler):
     def soap_validate_token(self, root):
         payload, error = self.require_auth()
         if error:
+            self.log_auth_event("validate_token", "failure", error=error)
             self.send_body(401, soap_fault("Auth.TokenInvalid", error))
             return
+        self.log_auth_event(
+            "validate_token",
+            "success",
+            username=payload["sub"],
+            role=payload["role"],
+            session_id=payload["sid"],
+            token_id=payload["jti"],
+        )
         self.send_body(
             200,
             response_element(
@@ -866,11 +1027,24 @@ class SoapDastHandler(BaseHTTPRequestHandler):
         refresh_token = xml_text(root, "RefreshToken")
         payload, error = self.require_auth()
         if error:
+            self.log_auth_event("logout", "failure", error=error)
             self.send_body(401, soap_fault("Auth.Required", error))
             return
         session = SESSIONS.pop(payload["sid"], None)
         if refresh_token in REFRESH_TOKENS:
             REFRESH_TOKENS[refresh_token]["active"] = False
+        self.log_auth_event(
+            "logout",
+            "success",
+            username=payload["sub"],
+            role=payload["role"],
+            session_id=payload["sid"],
+            token_id=payload["jti"],
+            details={
+                "session_removed": session is not None,
+                "refresh_token_fingerprint": token_fingerprint(refresh_token),
+            },
+        )
         self.send_body(
             200,
             response_element(

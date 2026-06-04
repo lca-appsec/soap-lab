@@ -164,11 +164,31 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
     def require_auth(self):
         token = self.bearer_token() or self.headers.get("X-Session-Token", "")
         if not token:
+            self.log_auth_event("vulnerable_access_token_missing", "failure", error="missing_bearer_token")
             return None, "missing_bearer_token"
         payload, error = insecure_verify_jwt(token)
         if error:
+            self.log_auth_event(
+                "vulnerable_access_token_validation",
+                "failure",
+                error=error,
+                details={"access_token_fingerprint": server.token_fingerprint(token)},
+            )
             return None, error
         # Vulnerability: cookie/session binding is not enforced.
+        self.log_auth_event(
+            "vulnerable_access_token_validation",
+            "success",
+            username=payload.get("sub"),
+            role=payload.get("role"),
+            session_id=payload.get("sid"),
+            token_id=payload.get("jti"),
+            details={
+                "access_token_fingerprint": server.token_fingerprint(token),
+                "signature_verified": False,
+                "session_cookie_enforced": False,
+            },
+        )
         return payload, None
 
     def soap_login(self, root):
@@ -176,6 +196,7 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
         password = server.xml_text(root, "Password")
         user = server.USERS.get(username)
         if not user or user["password"] != password:
+            self.log_auth_event("vulnerable_login", "failure", username=username, error="invalid_credentials")
             self.send_body(401, server.soap_fault("Auth.InvalidCredentials", "Invalid username or password"))
             return
 
@@ -188,6 +209,20 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
             refresh_record["session_id"] = fixed_session
             access_token, claims = server.make_jwt(username, user["role"], fixed_session)
             session_id = fixed_session
+        self.log_auth_event(
+            "vulnerable_login",
+            "success",
+            username=username,
+            role=user["role"],
+            session_id=session_id,
+            token_id=claims["jti"],
+            details={
+                "access_token_fingerprint": server.token_fingerprint(access_token),
+                "refresh_token_fingerprint": server.token_fingerprint(refresh_token),
+                "session_fixation_used": bool(fixed_session),
+                "cookie_security_attributes": "missing_httponly_samesite",
+            },
+        )
 
         headers = {
             # Vulnerability: intentionally omits HttpOnly/SameSite attributes.
@@ -213,12 +248,32 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
         refresh_token = server.xml_text(root, "RefreshToken")
         record = server.REFRESH_TOKENS.get(refresh_token)
         if not record:
+            self.log_auth_event(
+                "vulnerable_refresh_token",
+                "failure",
+                error="refresh_token_not_found",
+                details={"refresh_token_fingerprint": server.token_fingerprint(refresh_token)},
+            )
             self.send_body(401, server.soap_fault("Auth.RefreshFailed", "refresh_token_not_found"))
             return
 
         # Vulnerability: refresh token is reusable and not rotated.
         user = server.USERS[record["username"]]
         access_token, claims = server.make_jwt(record["username"], user["role"], record["session_id"])
+        self.log_auth_event(
+            "vulnerable_refresh_token",
+            "success",
+            username=record["username"],
+            role=user["role"],
+            session_id=record["session_id"],
+            token_id=claims["jti"],
+            details={
+                "refresh_token_fingerprint": server.token_fingerprint(refresh_token),
+                "new_access_token_fingerprint": server.token_fingerprint(access_token),
+                "refresh_rotated": False,
+                "vulnerability": "refresh_token_reuse_allowed",
+            },
+        )
         self.send_body(
             200,
             unsafe_response_element(
@@ -238,8 +293,17 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
     def soap_validate_token(self, root):
         payload, error = self.require_auth()
         if error:
+            self.log_auth_event("vulnerable_validate_token", "failure", error=error)
             self.send_body(401, server.soap_fault("Auth.TokenInvalid", error))
             return
+        self.log_auth_event(
+            "vulnerable_validate_token",
+            "success",
+            username=payload.get("sub"),
+            role=payload.get("role"),
+            session_id=payload.get("sid"),
+            token_id=payload.get("jti"),
+        )
         self.send_body(
             200,
             unsafe_response_element(
