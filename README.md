@@ -23,6 +23,11 @@ Swagger/OpenAPI documents:
 - SOAP/XML Swagger-style document: `http://127.0.0.1:8089/swagger/xml.json`
 - WSDL: `http://127.0.0.1:8089/soap?wsdl`
 
+Static OpenAPI files for import:
+
+- `openapi/rest-openapi.json`
+- `openapi/soap-openapi.json`
+
 ### Intentional Vulnerabilities
 
 This lab is vulnerable on purpose:
@@ -51,6 +56,8 @@ Run this only in environments you own or are authorized to test.
 - `vulnerable-requests.http`: vulnerable SOAP examples
 - `admin-user-requests.http`: XML product route examples
 - `rest-json-requests.http`: REST JSON examples
+- `openapi/rest-openapi.json`: static OpenAPI file for REST JSON import
+- `openapi/soap-openapi.json`: static OpenAPI-style file for SOAP/XML import
 - `deploy/aws/`: AWS ECS/Fargate examples
 - `deploy/azure/`: Azure Container Apps examples
 
@@ -125,6 +132,12 @@ Swagger:
 
 ```text
 http://127.0.0.1:8089/swagger/rest.json
+```
+
+Static file:
+
+```text
+openapi/rest-openapi.json
 ```
 
 ### REST: Login As Admin
@@ -304,6 +317,12 @@ SOAP/XML Swagger-style document:
 
 ```text
 http://127.0.0.1:8089/swagger/xml.json
+```
+
+Static file:
+
+```text
+openapi/soap-openapi.json
 ```
 
 ### SOAP: Login As Admin
@@ -594,6 +613,11 @@ Documentos Swagger/OpenAPI:
 - Documento estilo Swagger para SOAP/XML: `http://127.0.0.1:8089/swagger/xml.json`
 - WSDL: `http://127.0.0.1:8089/soap?wsdl`
 
+Arquivos OpenAPI estaticos para importar:
+
+- `openapi/rest-openapi.json`
+- `openapi/soap-openapi.json`
+
 ### Vulnerabilidades Intencionais
 
 Este laboratorio e vulneravel de proposito:
@@ -622,6 +646,8 @@ Rode apenas em ambientes seus ou onde voce tem autorizacao para testar.
 - `vulnerable-requests.http`: exemplos SOAP vulneraveis
 - `admin-user-requests.http`: exemplos XML de produtos
 - `rest-json-requests.http`: exemplos REST JSON
+- `openapi/rest-openapi.json`: arquivo OpenAPI estatico para importar REST JSON
+- `openapi/soap-openapi.json`: arquivo estilo OpenAPI estatico para importar SOAP/XML
 - `deploy/aws/`: exemplos AWS ECS/Fargate
 - `deploy/azure/`: exemplos Azure Container Apps
 
@@ -696,6 +722,12 @@ Swagger:
 
 ```text
 http://127.0.0.1:8089/swagger/rest.json
+```
+
+Arquivo estatico:
+
+```text
+openapi/rest-openapi.json
 ```
 
 ### REST: Login Como Admin
@@ -875,6 +907,12 @@ Documento estilo Swagger para SOAP/XML:
 
 ```text
 http://127.0.0.1:8089/swagger/xml.json
+```
+
+Arquivo estatico:
+
+```text
+openapi/soap-openapi.json
 ```
 
 ### SOAP: Login Como Admin

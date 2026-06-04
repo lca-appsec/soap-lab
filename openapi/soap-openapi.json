@@ -1,0 +1,148 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Vulnerable SOAP Lab - XML/SOAP API",
+    "version": "1.0.0",
+    "description": "Swagger-style documentation for the XML/SOAP attack lab. SOAPAction selects the operation."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8089"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  },
+  "paths": {
+    "/soap?wsdl": {
+      "get": {
+        "summary": "Download WSDL",
+        "responses": {
+          "200": {
+            "description": "WSDL XML"
+          }
+        }
+      }
+    },
+    "/soap": {
+      "post": {
+        "summary": "SOAP endpoint for Login, RefreshToken, ValidateToken, GetAccount, TransferFunds, SearchUser, Logout",
+        "parameters": [
+          {
+            "name": "SOAPAction",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "Login",
+                "RefreshToken",
+                "ValidateToken",
+                "GetAccount",
+                "TransferFunds",
+                "SearchUser",
+                "Logout"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "text/xml": {
+              "schema": {
+                "type": "string"
+              },
+              "example": "<?xml version=\"1.0\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\"><soap:Body><lab:Login><lab:Username>admin_aurora</lab:Username><lab:Password>R9v!tQ2mZx#4</lab:Password></lab:Login></soap:Body></soap:Envelope>"
+            },
+            "application/xml": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "SOAP XML response"
+          },
+          "401": {
+            "description": "SOAP auth fault"
+          }
+        }
+      }
+    },
+    "/admin/products": {
+      "get": {
+        "summary": "XML admin product list",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "XML response"
+          }
+        }
+      },
+      "post": {
+        "summary": "XML admin create product",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "XML response"
+          }
+        }
+      },
+      "delete": {
+        "summary": "XML admin delete product",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "XML response"
+          }
+        }
+      }
+    },
+    "/user/products": {
+      "get": {
+        "summary": "XML user product list",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "XML response"
+          }
+        }
+      }
+    },
+    "/audit": {
+      "get": {
+        "summary": "XML audit log",
+        "responses": {
+          "200": {
+            "description": "XML audit events"
+          }
+        }
+      }
+    }
+  }
+}
