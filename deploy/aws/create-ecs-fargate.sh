@@ -10,6 +10,7 @@ IMAGE_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${REPOSITORY_NA
 SUBNETS="${SUBNETS:-subnet-REPLACE_ME,subnet-REPLACE_ME}"
 SECURITY_GROUPS="${SECURITY_GROUPS:-sg-REPLACE_ME}"
 PUBLIC_HOST="${PUBLIC_HOST:-REPLACE_WITH_PUBLIC_DNS_OR_LOAD_BALANCER}"
+IMAGE_PLATFORM="${IMAGE_PLATFORM:-linux/amd64}"
 
 aws ecr describe-repositories --repository-names "${REPOSITORY_NAME}" --region "${AWS_REGION}" >/dev/null 2>&1 || \
   aws ecr create-repository --repository-name "${REPOSITORY_NAME}" --region "${AWS_REGION}" >/dev/null
@@ -17,9 +18,10 @@ aws ecr describe-repositories --repository-names "${REPOSITORY_NAME}" --region "
 aws ecr get-login-password --region "${AWS_REGION}" | \
   docker login --username AWS --password-stdin "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
-docker build -t "${REPOSITORY_NAME}:latest" .
-docker tag "${REPOSITORY_NAME}:latest" "${IMAGE_URI}"
-docker push "${IMAGE_URI}"
+docker buildx inspect soap-dast-lab-builder >/dev/null 2>&1 || \
+  docker buildx create --name soap-dast-lab-builder --use >/dev/null
+docker buildx use soap-dast-lab-builder
+docker buildx build --platform "${IMAGE_PLATFORM}" -t "${IMAGE_URI}" --push .
 
 aws logs create-log-group --log-group-name "/ecs/${SERVICE_NAME}" --region "${AWS_REGION}" >/dev/null 2>&1 || true
 aws ecs create-cluster --cluster-name "${CLUSTER_NAME}" --region "${AWS_REGION}" >/dev/null 2>&1 || true

@@ -543,10 +543,13 @@ export AWS_ACCOUNT_ID=123456789012
 export SUBNETS=subnet-aaa111,subnet-bbb222
 export SECURITY_GROUPS=sg-abc123
 export PUBLIC_HOST=your-public-dns-or-load-balancer
+export IMAGE_PLATFORM=linux/amd64
 
 chmod +x deploy/aws/create-ecs-fargate.sh
 ./deploy/aws/create-ecs-fargate.sh
 ```
+
+The script uses `docker buildx build --platform linux/amd64 --push` by default. This avoids cloud runtime errors when the image was built on an ARM machine such as an Apple Silicon Mac.
 
 Test:
 
@@ -573,10 +576,13 @@ export LOCATION=eastus
 export RESOURCE_GROUP=rg-soap-dast-lab
 export ENVIRONMENT_NAME=cae-soap-dast-lab
 export ACR_NAME=youruniqueacrname
+export IMAGE_PLATFORM=linux/amd64
 
 chmod +x deploy/azure/create-container-apps.sh
 ./deploy/azure/create-container-apps.sh
 ```
+
+The script uses `docker buildx build --platform linux/amd64 --push` by default. This fixes Azure errors like `no child with platform linux/amd64 in index`.
 
 Test:
 
@@ -1133,10 +1139,13 @@ export AWS_ACCOUNT_ID=123456789012
 export SUBNETS=subnet-aaa111,subnet-bbb222
 export SECURITY_GROUPS=sg-abc123
 export PUBLIC_HOST=seu-dns-publico-ou-load-balancer
+export IMAGE_PLATFORM=linux/amd64
 
 chmod +x deploy/aws/create-ecs-fargate.sh
 ./deploy/aws/create-ecs-fargate.sh
 ```
+
+O script usa `docker buildx build --platform linux/amd64 --push` por padrao. Isso evita erros em runtimes cloud quando a imagem foi buildada em maquina ARM, como Mac Apple Silicon.
 
 Teste:
 
@@ -1163,10 +1172,13 @@ export LOCATION=eastus
 export RESOURCE_GROUP=rg-soap-dast-lab
 export ENVIRONMENT_NAME=cae-soap-dast-lab
 export ACR_NAME=seuacrnomeunico
+export IMAGE_PLATFORM=linux/amd64
 
 chmod +x deploy/azure/create-container-apps.sh
 ./deploy/azure/create-container-apps.sh
 ```
+
+O script usa `docker buildx build --platform linux/amd64 --push` por padrao. Isso corrige erros da Azure como `no child with platform linux/amd64 in index`.
 
 Teste:
 

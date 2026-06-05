@@ -8,6 +8,7 @@ ACR_NAME="${ACR_NAME:-REPLACE_WITH_UNIQUE_ACR_NAME}"
 IMAGE_NAME="${IMAGE_NAME:-soap-dast-lab}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 IMAGE_URI="${ACR_NAME}.azurecr.io/${IMAGE_NAME}:${IMAGE_TAG}"
+IMAGE_PLATFORM="${IMAGE_PLATFORM:-linux/amd64}"
 
 az group create --name "${RESOURCE_GROUP}" --location "${LOCATION}" >/dev/null
 az acr create --resource-group "${RESOURCE_GROUP}" --name "${ACR_NAME}" --sku Basic >/dev/null 2>&1 || true
@@ -16,8 +17,10 @@ az acr login --name "${ACR_NAME}"
 ACR_USERNAME="$(az acr credential show --name "${ACR_NAME}" --query username -o tsv)"
 ACR_PASSWORD="$(az acr credential show --name "${ACR_NAME}" --query passwords[0].value -o tsv)"
 
-docker build -t "${IMAGE_URI}" .
-docker push "${IMAGE_URI}"
+docker buildx inspect soap-dast-lab-builder >/dev/null 2>&1 || \
+  docker buildx create --name soap-dast-lab-builder --use >/dev/null
+docker buildx use soap-dast-lab-builder
+docker buildx build --platform "${IMAGE_PLATFORM}" -t "${IMAGE_URI}" --push .
 
 az containerapp env create \
   --name "${ENVIRONMENT_NAME}" \
