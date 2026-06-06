@@ -6,8 +6,8 @@ properties:
       transport: http
   template:
     containers:
-      - name: soap-dast-lab-vulnerable
-        image: REPLACE_WITH_ACR.azurecr.io/soap-dast-lab:latest
+      - name: ca-rest-soap-labs
+        image: restsoaplabs.azurecr.io/rest-soap-labs:latest
         env:
           - name: APP_MODE
             value: vulnerable

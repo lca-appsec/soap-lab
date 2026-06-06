@@ -573,9 +573,11 @@ az login
 az extension add --name containerapp --upgrade
 
 export LOCATION=eastus
-export RESOURCE_GROUP=rg-soap-dast-lab
-export ENVIRONMENT_NAME=cae-soap-dast-lab
-export ACR_NAME=youruniqueacrname
+export PROJECT_NAME=rest-soap-labs
+export RESOURCE_GROUP=rg-rest-soap-labs
+export ENVIRONMENT_NAME=cae-rest-soap-labs
+export CONTAINER_APP_NAME=ca-rest-soap-labs
+export ACR_NAME=restsoaplabs
 export IMAGE_PLATFORM=linux/amd64
 
 chmod +x deploy/azure/create-container-apps.sh
@@ -583,6 +585,19 @@ chmod +x deploy/azure/create-container-apps.sh
 ```
 
 The script uses `docker buildx build --platform linux/amd64 --push` by default. This fixes Azure errors like `no child with platform linux/amd64 in index`.
+
+Default Azure names:
+
+```text
+Project name:           rest-soap-labs
+Resource group:         rg-rest-soap-labs
+Container Apps env:     cae-rest-soap-labs
+Container App:          ca-rest-soap-labs
+Image name:             rest-soap-labs
+ACR:                    restsoaplabs
+```
+
+Azure Container Registry is the only exception to the hyphenated name because ACR names cannot contain hyphens. If `restsoaplabs` is already taken globally, set another alphanumeric value with `ACR_NAME`.
 
 Test:
 
@@ -1169,9 +1184,11 @@ az login
 az extension add --name containerapp --upgrade
 
 export LOCATION=eastus
-export RESOURCE_GROUP=rg-soap-dast-lab
-export ENVIRONMENT_NAME=cae-soap-dast-lab
-export ACR_NAME=seuacrnomeunico
+export PROJECT_NAME=rest-soap-labs
+export RESOURCE_GROUP=rg-rest-soap-labs
+export ENVIRONMENT_NAME=cae-rest-soap-labs
+export CONTAINER_APP_NAME=ca-rest-soap-labs
+export ACR_NAME=restsoaplabs
 export IMAGE_PLATFORM=linux/amd64
 
 chmod +x deploy/azure/create-container-apps.sh
@@ -1179,6 +1196,19 @@ chmod +x deploy/azure/create-container-apps.sh
 ```
 
 O script usa `docker buildx build --platform linux/amd64 --push` por padrao. Isso corrige erros da Azure como `no child with platform linux/amd64 in index`.
+
+Nomes padrao na Azure:
+
+```text
+Project name:           rest-soap-labs
+Resource group:         rg-rest-soap-labs
+Container Apps env:     cae-rest-soap-labs
+Container App:          ca-rest-soap-labs
+Image name:             rest-soap-labs
+ACR:                    restsoaplabs
+```
+
+Azure Container Registry e a unica excecao ao nome com hifen porque ACR nao aceita hifens. Se `restsoaplabs` ja estiver ocupado globalmente, defina outro valor alfanumerico com `ACR_NAME`.
 
 Teste:
 
