@@ -7,7 +7,7 @@
   },
   "servers": [
     {
-      "url": "http://127.0.0.1:8089"
+      "url": "https://ca-rest-soap-labs.wonderfulcoast-2578bc9b.eastus.azurecontainerapps.io:443"
     }
   ],
   "components": {
@@ -32,7 +32,8 @@
     },
     "/soap": {
       "post": {
-        "summary": "SOAP endpoint for Login, RefreshToken, ValidateToken, GetAccount, TransferFunds, SearchUser, Logout",
+        "summary": "SOAP endpoint for protected business operations: GetAccount, TransferFunds, SearchUser, Logout",
+        "description": "Do not use this endpoint for authentication. Use POST /soap/auth with SOAPAction Login, RefreshToken or ValidateToken.",
         "parameters": [
           {
             "name": "SOAPAction",
@@ -41,9 +42,6 @@
             "schema": {
               "type": "string",
               "enum": [
-                "Login",
-                "RefreshToken",
-                "ValidateToken",
                 "GetAccount",
                 "TransferFunds",
                 "SearchUser",
@@ -59,7 +57,7 @@
               "schema": {
                 "type": "string"
               },
-              "example": "<?xml version=\"1.0\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\"><soap:Body><lab:Login><lab:Username>admin_aurora</lab:Username><lab:Password>R9v!tQ2mZx#4</lab:Password></lab:Login></soap:Body></soap:Envelope>"
+              "example": "<?xml version=\"1.0\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\"><soap:Body><lab:GetAccount><lab:AccountId>9001</lab:AccountId></lab:GetAccount></soap:Body></soap:Envelope>"
             },
             "application/xml": {
               "schema": {
@@ -71,6 +69,54 @@
         "responses": {
           "200": {
             "description": "SOAP XML response"
+          },
+          "401": {
+            "description": "SOAP auth fault"
+          }
+        }
+      }
+    },
+    "/soap/auth": {
+      "post": {
+        "summary": "Dedicated SOAP authentication endpoint for Login, RefreshToken and ValidateToken",
+        "description": "Use this endpoint with SOAPAction Login to obtain AccessToken/RefreshToken, SOAPAction RefreshToken to reauthenticate, and SOAPAction ValidateToken to validate the current access token. All auth interactions are written to the audit log.",
+        "parameters": [
+          {
+            "name": "SOAPAction",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "Login",
+                "RefreshToken",
+                "ValidateToken"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "text/xml": {
+              "schema": {
+                "type": "string"
+              },
+              "example": "<?xml version=\"1.0\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\"><soap:Body><lab:Login><lab:Username>admin_aurora</lab:Username><lab:Password>adminpass1</lab:Password></lab:Login></soap:Body></soap:Envelope>"
+            },
+            "application/xml": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "SOAP auth XML response"
+          },
+          "400": {
+            "description": "Unsupported auth action"
           },
           "401": {
             "description": "SOAP auth fault"
@@ -134,12 +180,280 @@
         }
       }
     },
+    "/products/eletronico": {
+      "get": {
+        "summary": "XML electronics catalog with SQL injection parameters",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "camera' OR '1'='1"
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "1 OR 1=1"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "name; DROP TABLE products"
+          },
+          {
+            "name": "promotion",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "yes",
+                "no"
+              ]
+            }
+          },
+          {
+            "name": "min_value",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "0 UNION SELECT username,password,1,1,1 FROM users"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "XML catalog response"
+          }
+        }
+      }
+    },
+    "/products/smarphone": {
+      "get": {
+        "summary": "XML smarphone catalog with SQL injection parameters",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "camera' OR '1'='1"
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "1 OR 1=1"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "name; DROP TABLE products"
+          },
+          {
+            "name": "promotion",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "yes",
+                "no"
+              ]
+            }
+          },
+          {
+            "name": "min_value",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "0 UNION SELECT username,password,1,1,1 FROM users"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "XML catalog response"
+          }
+        }
+      }
+    },
+    "/products/laptops": {
+      "get": {
+        "summary": "XML laptop catalog with SQL injection parameters",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "camera' OR '1'='1"
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "1 OR 1=1"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "name; DROP TABLE products"
+          },
+          {
+            "name": "promotion",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "yes",
+                "no"
+              ]
+            }
+          },
+          {
+            "name": "min_value",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "0 UNION SELECT username,password,1,1,1 FROM users"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "XML catalog response"
+          }
+        }
+      }
+    },
+    "/products/books": {
+      "get": {
+        "summary": "XML books catalog with SQL injection parameters",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "camera' OR '1'='1"
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "1 OR 1=1"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "name; DROP TABLE products"
+          },
+          {
+            "name": "promotion",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "yes",
+                "no"
+              ]
+            }
+          },
+          {
+            "name": "min_value",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "0 UNION SELECT username,password,1,1,1 FROM users"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "XML catalog response"
+          }
+        }
+      }
+    },
+    "/comments": {
+      "get": {
+        "summary": "Stored/reflected XSS comment form",
+        "responses": {
+          "200": {
+            "description": "HTML form"
+          }
+        }
+      },
+      "post": {
+        "summary": "Submit vulnerable comment",
+        "responses": {
+          "200": {
+            "description": "HTML response with unescaped stored comment"
+          }
+        }
+      }
+    },
     "/audit": {
       "get": {
         "summary": "XML audit log",
         "responses": {
           "200": {
             "description": "XML audit events"
+          }
+        }
+      }
+    },
+    "/login-tracking": {
+      "get": {
+        "summary": "XML authentication tracking evidence",
+        "responses": {
+          "200": {
+            "description": "Login and token tracking evidence"
           }
         }
       }

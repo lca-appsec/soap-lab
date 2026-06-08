@@ -2,8 +2,10 @@
 import base64
 import hashlib
 import hmac
+import html
 import json
 import os
+import re
 import secrets
 import time
 import uuid
@@ -25,61 +27,61 @@ SESSION_TTL_SECONDS = 600
 
 USERS = {
     "admin_aurora": {
-        "password": "R9v!tQ2mZx#4",
+        "password": "adminpass1",
         "role": "admin",
         "account_id": "9001",
         "balance": 99250.00,
     },
     "admin_boreal": {
-        "password": "K7p@Lw3sDn$8",
+        "password": "adminpass2",
         "role": "admin",
         "account_id": "9002",
         "balance": 87410.20,
     },
     "admin_cosmos": {
-        "password": "M4x#Qr8nVp!1",
+        "password": "adminpass3",
         "role": "admin",
         "account_id": "9003",
         "balance": 76500.75,
     },
     "admin_delta": {
-        "password": "H2s$Yu6cJk@9",
+        "password": "adminpass4",
         "role": "admin",
         "account_id": "9004",
         "balance": 68220.40,
     },
     "admin_equinox": {
-        "password": "T5n!Ba9wLf#3",
+        "password": "adminpass5",
         "role": "admin",
         "account_id": "9005",
         "balance": 59100.10,
     },
     "user_apollo": {
-        "password": "P6d@Xe1mRt$7",
+        "password": "userpass1",
         "role": "user",
         "account_id": "1001",
         "balance": 1280.50,
     },
     "user_bianca": {
-        "password": "W8k#No2vHs!5",
+        "password": "userpass2",
         "role": "user",
         "account_id": "1002",
         "balance": 940.25,
     },
     "user_cairo": {
-        "password": "C3y$Pa7qZm@2",
+        "password": "userpass3",
         "role": "user",
         "account_id": "1003",
         "balance": 2100.00,
     },
     "user_diana": {
-        "password": "L1f!Gw5rKb#6",
+        "password": "userpass4",
         "role": "user",
         "account_id": "1004",
         "balance": 315.90,
     },
     "user_elias": {
-        "password": "V9m@Sd4xQh$1",
+        "password": "userpass5",
         "role": "user",
         "account_id": "1005",
         "balance": 1785.35,
@@ -94,9 +96,80 @@ PRODUCTS = {
     "SKU-500": {"name": "Dock Station Vega", "price": 799.00, "stock": 22},
 }
 
+FUZZING_CATALOG = {
+    "eletronico": [
+        {"name": "Camera Sentinel 4K", "description": "Camera IP com visao noturna e audio bidirecional", "value": 899.90, "stock": 14, "promotion": "yes"},
+        {"name": "Roteador Prisma AX3000", "description": "Roteador Wi-Fi 6 para laboratorio e pequenos escritorios", "value": 649.00, "stock": 32, "promotion": "no"},
+        {"name": "Headset Vector USB", "description": "Headset com microfone removivel e cancelamento passivo", "value": 219.90, "stock": 77, "promotion": "yes"},
+        {"name": "Webcam Aurora HD", "description": "Webcam 1080p para reunioes e transmissao", "value": 189.50, "stock": 41, "promotion": "no"},
+        {"name": "Hub Quantum USB-C", "description": "Hub com HDMI, rede gigabit e leitor SD", "value": 299.90, "stock": 25, "promotion": "yes"},
+        {"name": "Carregador Nimbus 65W", "description": "Carregador GaN com duas portas USB-C", "value": 159.90, "stock": 64, "promotion": "no"},
+        {"name": "Caixa Som Pulse Mini", "description": "Caixa Bluetooth compacta resistente a agua", "value": 239.00, "stock": 38, "promotion": "yes"},
+        {"name": "Projetor Vega Pico", "description": "Projetor portatil para salas pequenas", "value": 1299.00, "stock": 9, "promotion": "no"},
+        {"name": "Switch Atlas 8 Portas", "description": "Switch gigabit nao gerenciavel para bancada", "value": 179.90, "stock": 53, "promotion": "yes"},
+        {"name": "Controle Terra Gamepad", "description": "Controle sem fio para PC e mobile", "value": 269.90, "stock": 28, "promotion": "no"},
+    ],
+    "smarphone": [
+        {"name": "Smarphone Orion X1", "description": "Tela OLED, 128 GB e camera dupla", "value": 1899.90, "stock": 22, "promotion": "yes"},
+        {"name": "Smarphone Boreal Lite", "description": "Modelo de entrada com bateria de longa duracao", "value": 899.00, "stock": 46, "promotion": "no"},
+        {"name": "Smarphone Cosmos Pro", "description": "Camera tripla, 256 GB e carregamento rapido", "value": 3299.90, "stock": 11, "promotion": "yes"},
+        {"name": "Smarphone Delta Max", "description": "Tela grande para produtividade e streaming", "value": 2499.00, "stock": 18, "promotion": "no"},
+        {"name": "Smarphone Equinox Mini", "description": "Aparelho compacto com NFC", "value": 1399.90, "stock": 33, "promotion": "yes"},
+        {"name": "Smarphone Apollo 5G", "description": "Conectividade 5G e 8 GB RAM", "value": 2199.90, "stock": 27, "promotion": "no"},
+        {"name": "Smarphone Bianca Plus", "description": "Selfie camera de alta resolucao", "value": 1799.00, "stock": 20, "promotion": "yes"},
+        {"name": "Smarphone Cairo Play", "description": "Otimizado para jogos casuais", "value": 1599.90, "stock": 39, "promotion": "no"},
+        {"name": "Smarphone Diana Secure", "description": "Recursos extras de privacidade e biometria", "value": 2799.00, "stock": 13, "promotion": "yes"},
+        {"name": "Smarphone Elias Go", "description": "Dual SIM e armazenamento expansivel", "value": 1099.90, "stock": 51, "promotion": "no"},
+    ],
+    "laptops": [
+        {"name": "Laptop Orion 14", "description": "Ultrabook leve com 16 GB RAM", "value": 4299.90, "stock": 18, "promotion": "yes"},
+        {"name": "Laptop Nebula 15", "description": "Notebook para desenvolvimento e virtualizacao", "value": 5599.00, "stock": 8, "promotion": "no"},
+        {"name": "Laptop Atlas Pro", "description": "CPU de alto desempenho e SSD 1 TB", "value": 7899.90, "stock": 6, "promotion": "yes"},
+        {"name": "Laptop Pulse Air", "description": "Modelo fino para viagens", "value": 3799.00, "stock": 21, "promotion": "no"},
+        {"name": "Laptop Vega Work", "description": "Foco em planilhas e ferramentas corporativas", "value": 3199.90, "stock": 30, "promotion": "yes"},
+        {"name": "Laptop Sentinel Sec", "description": "Modulo TPM e leitor biometrico", "value": 6499.00, "stock": 7, "promotion": "no"},
+        {"name": "Laptop Prisma Edu", "description": "Equipamento para laboratorios educacionais", "value": 2499.90, "stock": 44, "promotion": "yes"},
+        {"name": "Laptop Quantum Studio", "description": "GPU dedicada para edicao e criacao", "value": 8999.00, "stock": 5, "promotion": "no"},
+        {"name": "Laptop Nimbus Basic", "description": "Notebook simples para navegacao", "value": 1999.90, "stock": 58, "promotion": "yes"},
+        {"name": "Laptop Terra Rugged", "description": "Chassi reforcado para campo", "value": 7199.00, "stock": 4, "promotion": "no"},
+    ],
+    "books": [
+        {"name": "Secure Coding Kids", "description": "Introducao simples a desenvolvimento seguro", "value": 79.90, "stock": 80, "promotion": "yes"},
+        {"name": "SOAP APIs Explained", "description": "Guia pratico de servicos SOAP", "value": 129.90, "stock": 24, "promotion": "no"},
+        {"name": "JWT Field Notes", "description": "Notas sobre tokens, sessoes e refresh", "value": 99.00, "stock": 35, "promotion": "yes"},
+        {"name": "DAST Lab Manual", "description": "Manual de testes dinamicos autorizados", "value": 149.90, "stock": 17, "promotion": "no"},
+        {"name": "XML Parser Tales", "description": "Historias tecnicas sobre XML e validacao", "value": 89.90, "stock": 48, "promotion": "yes"},
+        {"name": "API Threat Modeling", "description": "Modelagem de ameacas para APIs modernas", "value": 159.00, "stock": 20, "promotion": "no"},
+        {"name": "Fuzzing Playground", "description": "Exercicios de fuzzing para iniciantes", "value": 119.90, "stock": 26, "promotion": "yes"},
+        {"name": "Cloud Containers 101", "description": "Fundamentos de containers em cloud", "value": 109.90, "stock": 31, "promotion": "no"},
+        {"name": "XSS Patterns", "description": "Catalogo de padroes de cross-site scripting", "value": 139.90, "stock": 12, "promotion": "yes"},
+        {"name": "SQL Injection Primer", "description": "Conceitos basicos de injecao SQL em labs", "value": 94.90, "stock": 42, "promotion": "no"},
+    ],
+}
+
+COMMENTS = []
+
 REFRESH_TOKENS = {}
 SESSIONS = {}
 AUDIT_LOG = []
+SENSITIVE_XML_TAGS = {"Password", "AccessToken", "RefreshToken"}
+SENSITIVE_HEADERS = {"authorization", "cookie", "set-cookie"}
+LOGIN_TRACKING_EVENT_MARKERS = {
+    "login",
+    "refresh_token",
+    "validate_token",
+    "access_token",
+    "token_expired",
+    "session_expired",
+    "session_not_found",
+    "refresh",
+}
+LOGIN_TRACKING_PATHS = {
+    "/soap/auth",
+    "/api/login",
+    "/api/refresh",
+    "/api/validate",
+}
 
 
 def b64url_encode(raw):
@@ -242,6 +315,105 @@ def escape_xml(value):
     )
 
 
+def redact_sensitive_xml(value):
+    redacted = str(value)
+    for tag in SENSITIVE_XML_TAGS:
+        redacted = re.sub(
+            rf"(<(?:[^>:]+:)?{tag}\b[^>]*>)([\s\S]*?)(</(?:[^>:]+:)?{tag}>)",
+            rf"\1[REDACTED]\3",
+            redacted,
+            flags=re.IGNORECASE,
+        )
+    return redacted
+
+
+def fingerprint_header_value(header_name, header_value):
+    if not header_value:
+        return ""
+    name = header_name.lower()
+    if name == "authorization" and header_value.startswith("Bearer "):
+        return f"Bearer fingerprint:{token_fingerprint(header_value.removeprefix('Bearer ').strip())}"
+    if name in SENSITIVE_HEADERS:
+        return "[REDACTED]"
+    return header_value
+
+
+def is_login_tracking_event(entry):
+    event = str(entry.get("event", ""))
+    error = str(entry.get("error", ""))
+    path = str(entry.get("path", ""))
+
+    if entry.get("type") == "auth":
+        searchable = f"{event} {error}"
+        return any(marker in searchable for marker in LOGIN_TRACKING_EVENT_MARKERS)
+
+    if entry.get("type") == "interaction":
+        soap_action = str(entry.get("soap_action", ""))
+        if path in LOGIN_TRACKING_PATHS:
+            return True
+        return soap_action in {"Login", "RefreshToken", "ValidateToken"}
+
+    return path in LOGIN_TRACKING_PATHS
+
+
+def login_tracking_report(limit=100):
+    events = [entry for entry in AUDIT_LOG if is_login_tracking_event(entry)]
+    selected = events[-limit:]
+    summary = {
+        "total_events": len(events),
+        "returned_events": len(selected),
+        "login_attempts": 0,
+        "login_success": 0,
+        "login_failure": 0,
+        "refresh_token_requests": 0,
+        "refresh_token_success": 0,
+        "refresh_token_failure": 0,
+        "token_validation_events": 0,
+        "expired_session_or_token_events": 0,
+        "new_token_events": 0,
+    }
+
+    for entry in events:
+        event = str(entry.get("event", ""))
+        error = str(entry.get("error", ""))
+        status = str(entry.get("status", ""))
+        details = entry.get("details", {}) if isinstance(entry.get("details", {}), dict) else {}
+
+        if "login" in event:
+            summary["login_attempts"] += 1
+            if status == "success":
+                summary["login_success"] += 1
+            if status == "failure":
+                summary["login_failure"] += 1
+
+        if "refresh_token" in event:
+            summary["refresh_token_requests"] += 1
+            if status == "success":
+                summary["refresh_token_success"] += 1
+            if status == "failure":
+                summary["refresh_token_failure"] += 1
+
+        if "validate_token" in event or "access_token_validation" in event:
+            summary["token_validation_events"] += 1
+
+        if error in {"token_expired", "session_expired", "session_not_found", "refresh_token_expired"}:
+            summary["expired_session_or_token_events"] += 1
+
+        if (
+            "access_token_fingerprint" in details
+            or "new_access_token_fingerprint" in details
+            or "new_refresh_token_fingerprint" in details
+        ):
+            summary["new_token_events"] += 1
+
+    return {
+        "description": "Authentication tracking evidence for login attempts, token validation, expired sessions/tokens, token refresh requests, and new token issuance.",
+        "retention": "in-memory; resets when the container restarts",
+        "summary": summary,
+        "events": selected,
+    }
+
+
 def issue_tokens(username):
     session_id = secrets.token_urlsafe(24)
     refresh_token = secrets.token_urlsafe(40)
@@ -317,6 +489,37 @@ WSDL = f"""<?xml version="1.0" encoding="UTF-8"?>
 class SoapDastHandler(BaseHTTPRequestHandler):
     server_version = "SoapDastLab/1.0"
 
+    def audit_headers(self):
+        return {
+            key: fingerprint_header_value(key, value)
+            for key, value in self.headers.items()
+            if key.lower() in {"authorization", "content-type", "soapaction", "user-agent", "cookie", "x-session-token"}
+        }
+
+    def log_interaction_event(self, event, status=None, action=None, request_body=None, response_body=None, details=None):
+        entry = {
+            "type": "interaction",
+            "time": now(),
+            "client": self.client_address[0],
+            "method": self.command,
+            "path": self.path,
+            "event": event,
+            "headers": self.audit_headers(),
+        }
+        if status is not None:
+            entry["status"] = status
+        if action:
+            entry["soap_action"] = action
+        if request_body is not None:
+            entry["request_body_length"] = len(request_body)
+            entry["request_body_preview"] = redact_sensitive_xml(request_body)[:1000]
+        if response_body is not None:
+            entry["response_body_length"] = len(response_body)
+            entry["response_body_preview"] = redact_sensitive_xml(response_body)[:1000]
+        if details:
+            entry["details"] = details
+        AUDIT_LOG.append(entry)
+
     def log_message(self, fmt, *args):
         AUDIT_LOG.append(
             {
@@ -365,6 +568,13 @@ class SoapDastHandler(BaseHTTPRequestHandler):
 
     def send_body(self, status, body, content_type="application/xml", headers=None):
         raw = body.encode("utf-8")
+        self.log_interaction_event(
+            "response_sent",
+            status=status,
+            action=getattr(self, "_soap_action", ""),
+            response_body=body,
+            details={"content_type": content_type, "response_bytes": len(raw)},
+        )
         self.send_response(status)
         self.send_header("Content-Type", f"{content_type}; charset=utf-8")
         self.send_header("Content-Length", str(len(raw)))
@@ -398,6 +608,7 @@ class SoapDastHandler(BaseHTTPRequestHandler):
                 {
                     "name": "SOAP DAST Lab",
                     "soap": "/soap",
+                    "soap_auth": "/soap/auth",
                     "wsdl": "/soap?wsdl",
                     "verbs": "/verbs",
                     "admin": "/admin",
@@ -405,6 +616,7 @@ class SoapDastHandler(BaseHTTPRequestHandler):
                     "user": "/user",
                     "user_products": "/user/products",
                     "audit": "/audit",
+                    "login_tracking": "/login-tracking",
                 },
             )
             return
@@ -418,6 +630,7 @@ class SoapDastHandler(BaseHTTPRequestHandler):
                     "service": "SOAP DAST Lab",
                     "wsdl": "/soap?wsdl",
                     "soap_endpoint": "/soap",
+                    "soap_auth_endpoint": "/soap/auth",
                     "required_method": "POST",
                     "required_headers": ["Content-Type: text/xml", "SOAPAction: <operation>"],
                     "operations": [
@@ -434,6 +647,28 @@ class SoapDastHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/audit":
             self.send_json(200, {"events": AUDIT_LOG[-50:]})
+            return
+        if parsed.path == "/login-tracking":
+            query = parse_qs(parsed.query, keep_blank_values=True)
+            try:
+                limit = int(query.get("limit", ["100"])[0])
+            except ValueError:
+                limit = 100
+            limit = max(1, min(limit, 500))
+            self.send_json(200, login_tracking_report(limit))
+            return
+        if parsed.path == "/soap/auth":
+            self.send_json(
+                200,
+                {
+                    "service": "SOAP DAST Lab Auth",
+                    "soap_auth_endpoint": "/soap/auth",
+                    "required_method": "POST",
+                    "allowed_soap_actions": ["Login", "RefreshToken", "ValidateToken"],
+                    "audit": "Authentication and reauthentication attempts are recorded in /audit.",
+                    "login_tracking": "/login-tracking",
+                },
+            )
             return
         if parsed.path == "/verbs":
             self.send_json(200, self.verb_payload("GET"))
@@ -564,6 +799,9 @@ class SoapDastHandler(BaseHTTPRequestHandler):
         if not raw_body.strip():
             return {}
         root = ElementTree.fromstring(raw_body)
+        if root.tag.split("}")[-1] == "String" and (root.text or "").strip().startswith("<"):
+            scanner_xml = html.unescape(root.text or "").replace("\\r", "\r").replace("\\n", "\n").strip()
+            root = ElementTree.fromstring(scanner_xml)
         return {
             child.tag.split("}")[-1]: (child.text or "")
             for child in root.iter()
@@ -741,7 +979,7 @@ class SoapDastHandler(BaseHTTPRequestHandler):
         if parsed.path == "/user/products":
             self.handle_user_write_forbidden("POST")
             return
-        if parsed.path != "/soap":
+        if parsed.path not in {"/soap", "/soap/auth"}:
             self.send_json(404, {"error": "not_found"})
             return
 
@@ -754,6 +992,26 @@ class SoapDastHandler(BaseHTTPRequestHandler):
             return
 
         action = self.headers.get("SOAPAction", "").strip('"') or self.detect_action(root)
+        self._soap_action = action
+        self.log_interaction_event("soap_request_received", action=action, request_body=raw_body)
+        if parsed.path == "/soap" and action in {"Login", "RefreshToken", "ValidateToken"}:
+            self.log_auth_event(
+                "soap_auth_wrong_route",
+                "failure",
+                error="auth_route_required",
+                details={"soap_action": action, "required_path": "/soap/auth"},
+            )
+            self.send_body(400, soap_fault("Client.AuthRouteRequired", f"Use /soap/auth for SOAPAction: {action}"))
+            return
+        if parsed.path == "/soap/auth" and action not in {"Login", "RefreshToken", "ValidateToken"}:
+            self.log_auth_event(
+                "soap_auth_route_rejected",
+                "failure",
+                error="unsupported_auth_action",
+                details={"soap_action": action, "allowed_actions": ["Login", "RefreshToken", "ValidateToken"]},
+            )
+            self.send_body(400, soap_fault("Client.UnsupportedAuthAction", f"/soap/auth only accepts Login, RefreshToken or ValidateToken, got: {action}"))
+            return
         handlers = {
             "Login": self.soap_login,
             "RefreshToken": self.soap_refresh_token,

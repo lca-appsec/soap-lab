@@ -7,7 +7,7 @@
   },
   "servers": [
     {
-      "url": "http://127.0.0.1:8089"
+      "url": "https://ca-rest-soap-labs.wonderfulcoast-2578bc9b.eastus.azurecontainerapps.io:443"
     }
   ],
   "components": {
@@ -246,12 +246,298 @@
         }
       }
     },
+    "/api/products/eletronico": {
+      "get": {
+        "summary": "Fuzzable electronics catalog with SQL injection parameters",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "camera' OR '1'='1"
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "1 OR 1=1"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "name; DROP TABLE products"
+          },
+          {
+            "name": "promotion",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "yes",
+                "no"
+              ]
+            }
+          },
+          {
+            "name": "min_value",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "0 UNION SELECT username,password,1,1,1 FROM users"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Electronics product list"
+          }
+        }
+      }
+    },
+    "/api/products/smarphone": {
+      "get": {
+        "summary": "Fuzzable smarphone catalog with SQL injection parameters",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "camera' OR '1'='1"
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "1 OR 1=1"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "name; DROP TABLE products"
+          },
+          {
+            "name": "promotion",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "yes",
+                "no"
+              ]
+            }
+          },
+          {
+            "name": "min_value",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "0 UNION SELECT username,password,1,1,1 FROM users"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Smarphone product list"
+          }
+        }
+      }
+    },
+    "/api/products/laptops": {
+      "get": {
+        "summary": "Fuzzable laptop catalog with SQL injection parameters",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "camera' OR '1'='1"
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "1 OR 1=1"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "name; DROP TABLE products"
+          },
+          {
+            "name": "promotion",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "yes",
+                "no"
+              ]
+            }
+          },
+          {
+            "name": "min_value",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "0 UNION SELECT username,password,1,1,1 FROM users"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Laptop product list"
+          }
+        }
+      }
+    },
+    "/api/products/books": {
+      "get": {
+        "summary": "Fuzzable books catalog with SQL injection parameters",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "camera' OR '1'='1"
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "1 OR 1=1"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "name; DROP TABLE products"
+          },
+          {
+            "name": "promotion",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "yes",
+                "no"
+              ]
+            }
+          },
+          {
+            "name": "min_value",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "0 UNION SELECT username,password,1,1,1 FROM users"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Books product list"
+          }
+        }
+      }
+    },
+    "/comments": {
+      "get": {
+        "summary": "Stored XSS comment form",
+        "responses": {
+          "200": {
+            "description": "HTML comment form"
+          }
+        }
+      },
+      "post": {
+        "summary": "Submit vulnerable comment",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "comment": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "HTML page reflecting stored comment without escaping"
+          }
+        }
+      }
+    },
     "/api/audit": {
       "get": {
         "summary": "Read HTTP/auth audit events",
         "responses": {
           "200": {
             "description": "Audit log"
+          }
+        }
+      }
+    },
+    "/api/login-tracking": {
+      "get": {
+        "summary": "Read authentication tracking evidence",
+        "responses": {
+          "200": {
+            "description": "Login and token tracking evidence"
           }
         }
       }

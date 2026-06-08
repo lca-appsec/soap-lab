@@ -16,6 +16,7 @@ It exposes two API styles:
 
 - REST API with JSON under `/api`
 - SOAP/XML API under `/soap`
+- Dedicated SOAP authentication, token validation, and reauthentication route under `/soap/auth`
 
 Swagger/OpenAPI documents:
 
@@ -27,6 +28,13 @@ Static OpenAPI files for import:
 
 - `openapi/rest-openapi.json`
 - `openapi/soap-openapi.json`
+
+DAST authentication scripts and validation helpers:
+
+- `scripts/dast/SRM_Soap.js`
+- `scripts/dast/SRM_Rest.js`
+- `scripts/dast/test-soap-auth-route.js`
+- `scripts/dast/test-rest-auth-route.js`
 
 ### Intentional Vulnerabilities
 
@@ -42,6 +50,8 @@ This lab is vulnerable on purpose:
 - `DOCTYPE` / `ENTITY` acceptance signal
 - TRACE reflection
 - Weak session binding
+- Full interaction audit for HTTP/SOAP requests, responses, login, token validation, and refresh token use
+- Dedicated login tracking evidence at `/login-tracking`
 
 Run this only in environments you own or are authorized to test.
 
@@ -67,21 +77,21 @@ Admin users:
 
 | Username | Password |
 | --- | --- |
-| `admin_aurora` | `R9v!tQ2mZx#4` |
-| `admin_boreal` | `K7p@Lw3sDn$8` |
-| `admin_cosmos` | `M4x#Qr8nVp!1` |
-| `admin_delta` | `H2s$Yu6cJk@9` |
-| `admin_equinox` | `T5n!Ba9wLf#3` |
+| `admin_aurora` | `adminpass1` |
+| `admin_boreal` | `adminpass2` |
+| `admin_cosmos` | `adminpass3` |
+| `admin_delta` | `adminpass4` |
+| `admin_equinox` | `adminpass5` |
 
 Normal users:
 
 | Username | Password |
 | --- | --- |
-| `user_apollo` | `P6d@Xe1mRt$7` |
-| `user_bianca` | `W8k#No2vHs!5` |
-| `user_cairo` | `C3y$Pa7qZm@2` |
-| `user_diana` | `L1f!Gw5rKb#6` |
-| `user_elias` | `V9m@Sd4xQh$1` |
+| `user_apollo` | `userpass1` |
+| `user_bianca` | `userpass2` |
+| `user_cairo` | `userpass3` |
+| `user_diana` | `userpass4` |
+| `user_elias` | `userpass5` |
 
 ### Run Locally With Docker
 
@@ -145,7 +155,7 @@ openapi/rest-openapi.json
 ```bash
 curl -s -X POST 'http://127.0.0.1:8089/api/login' \
   -H 'Content-Type: application/json' \
-  --data '{"username":"admin_aurora","password":"R9v!tQ2mZx#4"}'
+  --data '{"username":"admin_aurora","password":"adminpass1"}'
 ```
 
 The response returns:
@@ -252,7 +262,7 @@ curl -s -X DELETE 'http://127.0.0.1:8089/api/admin/products?sku=SKU-REST-1' \
 ```bash
 curl -s -X POST 'http://127.0.0.1:8089/api/login' \
   -H 'Content-Type: application/json' \
-  --data '{"username":"user_apollo","password":"P6d@Xe1mRt$7"}'
+  --data '{"username":"user_apollo","password":"userpass1"}'
 ```
 
 ### REST: User List Products
@@ -327,8 +337,10 @@ openapi/soap-openapi.json
 
 ### SOAP: Login As Admin
 
+Use `/soap/auth` for scanner authentication scripts:
+
 ```bash
-curl -s -X POST 'http://127.0.0.1:8089/soap' \
+curl -s -X POST 'http://127.0.0.1:8089/soap/auth' \
   -H 'Content-Type: text/xml' \
   -H 'SOAPAction: Login' \
   --data-binary '<?xml version="1.0"?>
@@ -336,7 +348,7 @@ curl -s -X POST 'http://127.0.0.1:8089/soap' \
   <soap:Body>
     <lab:Login>
       <lab:Username>admin_aurora</lab:Username>
-      <lab:Password>R9v!tQ2mZx#4</lab:Password>
+      <lab:Password>adminpass1</lab:Password>
     </lab:Login>
   </soap:Body>
 </soap:Envelope>'
@@ -367,8 +379,10 @@ curl -s -X POST 'http://127.0.0.1:8089/soap' \
 
 ### SOAP: Refresh Token
 
+Use `/soap/auth` for reauthentication:
+
 ```bash
-curl -s -X POST 'http://127.0.0.1:8089/soap' \
+curl -s -X POST 'http://127.0.0.1:8089/soap/auth' \
   -H 'Content-Type: text/xml' \
   -H 'SOAPAction: RefreshToken' \
   --data-binary '<?xml version="1.0"?>
@@ -417,6 +431,14 @@ Expected result:
 Content-Type: application/xml
 ```
 
+Some DAST tools wrap XML request examples as an escaped string, for example:
+
+```xml
+<?xml version='1.1' encoding='UTF-8'?><String>&lt;product&gt;&lt;sku&gt;SKU-900&lt;/sku&gt;&lt;name&gt;Scanner Lab Device&lt;/name&gt;&lt;price&gt;199.90&lt;/price&gt;&lt;stock&gt;7&lt;/stock&gt;&lt;/product&gt;</String>
+```
+
+The vulnerable app accepts both the direct `<product>` body and this scanner-style `<String>` wrapper.
+
 ### SOAP/XML: Admin Edit Product With PUSH
 
 ```bash
@@ -461,6 +483,26 @@ Expected result:
 curl -s 'http://127.0.0.1:8089/audit'
 ```
 
+### Login Tracking Evidence
+
+Use `/login-tracking` to collect only authentication evidence:
+
+```bash
+curl -s 'http://127.0.0.1:8089/login-tracking?limit=100'
+```
+
+This route shows:
+
+- every login attempt
+- successful and failed logins
+- expired token or expired session evidence
+- refresh token requests
+- new access token issuance
+- refresh token usage
+- token validation events
+
+The evidence is stored in memory and resets when the container restarts.
+
 Expected response:
 
 ```text
@@ -502,17 +544,27 @@ REST JSON targets:
 - `DELETE /api/admin/products`
 - `GET /api/user/products`
 - `POST /api/user/products`
+- `GET /api/products/eletronico?q=camera' OR '1'='1`
+- `GET /api/products/smarphone?id=1 OR 1=1`
+- `GET /api/products/laptops?sort=name; DROP TABLE products`
+- `GET /api/products/books?min_value=0 UNION SELECT username,password,1,1,1 FROM users`
+- `GET /comments?preview=<script>alert(1)</script>`
+- `POST /comments`
 
 SOAP/XML targets:
 
-- `POST /soap` with `SOAPAction: Login`
-- `POST /soap` with `SOAPAction: RefreshToken`
-- `POST /soap` with `SOAPAction: ValidateToken`
+- `POST /soap/auth` with `SOAPAction: Login`
+- `POST /soap/auth` with `SOAPAction: RefreshToken`
+- `POST /soap/auth` with `SOAPAction: ValidateToken`
 - `POST /soap` with `SOAPAction: SearchUser`
 - `POST /soap` with `DOCTYPE` / `ENTITY`
 - `POST /admin/products`
 - `PUSH /admin/products`
 - `DELETE /admin/products`
+- `GET /products/eletronico?q=camera' OR '1'='1`
+- `GET /products/smarphone?id=1 OR 1=1`
+- `GET /products/laptops?promotion=yes`
+- `GET /products/books?q=SQL' OR '1'='1`
 
 Authentication tests:
 
@@ -627,6 +679,7 @@ Ela expoe dois estilos de API:
 
 - API REST com JSON em `/api`
 - API SOAP/XML em `/soap`
+- Rota dedicada de autenticacao, validacao de token e reautenticacao SOAP em `/soap/auth`
 
 Documentos Swagger/OpenAPI:
 
@@ -638,6 +691,13 @@ Arquivos OpenAPI estaticos para importar:
 
 - `openapi/rest-openapi.json`
 - `openapi/soap-openapi.json`
+
+Scripts de autenticacao DAST e validadores:
+
+- `scripts/dast/SRM_Soap.js`
+- `scripts/dast/SRM_Rest.js`
+- `scripts/dast/test-soap-auth-route.js`
+- `scripts/dast/test-rest-auth-route.js`
 
 ### Vulnerabilidades Intencionais
 
@@ -653,6 +713,8 @@ Este laboratorio e vulneravel de proposito:
 - Sinal positivo para `DOCTYPE` / `ENTITY`
 - Reflexao com TRACE
 - Vinculo fraco de sessao
+- Auditoria completa de interacoes HTTP/SOAP, respostas, login, validacao de token e uso de refresh token
+- Evidencias dedicadas de login em `/login-tracking`
 
 Rode apenas em ambientes seus ou onde voce tem autorizacao para testar.
 
@@ -678,21 +740,21 @@ Usuarios admin:
 
 | Usuario | Senha |
 | --- | --- |
-| `admin_aurora` | `R9v!tQ2mZx#4` |
-| `admin_boreal` | `K7p@Lw3sDn$8` |
-| `admin_cosmos` | `M4x#Qr8nVp!1` |
-| `admin_delta` | `H2s$Yu6cJk@9` |
-| `admin_equinox` | `T5n!Ba9wLf#3` |
+| `admin_aurora` | `adminpass1` |
+| `admin_boreal` | `adminpass2` |
+| `admin_cosmos` | `adminpass3` |
+| `admin_delta` | `adminpass4` |
+| `admin_equinox` | `adminpass5` |
 
 Usuarios comuns:
 
 | Usuario | Senha |
 | --- | --- |
-| `user_apollo` | `P6d@Xe1mRt$7` |
-| `user_bianca` | `W8k#No2vHs!5` |
-| `user_cairo` | `C3y$Pa7qZm@2` |
-| `user_diana` | `L1f!Gw5rKb#6` |
-| `user_elias` | `V9m@Sd4xQh$1` |
+| `user_apollo` | `userpass1` |
+| `user_bianca` | `userpass2` |
+| `user_cairo` | `userpass3` |
+| `user_diana` | `userpass4` |
+| `user_elias` | `userpass5` |
 
 ### Rodar Localmente Com Docker
 
@@ -756,7 +818,7 @@ openapi/rest-openapi.json
 ```bash
 curl -s -X POST 'http://127.0.0.1:8089/api/login' \
   -H 'Content-Type: application/json' \
-  --data '{"username":"admin_aurora","password":"R9v!tQ2mZx#4"}'
+  --data '{"username":"admin_aurora","password":"adminpass1"}'
 ```
 
 A resposta retorna:
@@ -863,7 +925,7 @@ curl -s -X DELETE 'http://127.0.0.1:8089/api/admin/products?sku=SKU-REST-1' \
 ```bash
 curl -s -X POST 'http://127.0.0.1:8089/api/login' \
   -H 'Content-Type: application/json' \
-  --data '{"username":"user_apollo","password":"P6d@Xe1mRt$7"}'
+  --data '{"username":"user_apollo","password":"userpass1"}'
 ```
 
 ### REST: User Lista Produtos
@@ -938,8 +1000,10 @@ openapi/soap-openapi.json
 
 ### SOAP: Login Como Admin
 
+Use `/soap/auth` para scripts de autenticacao do scanner:
+
 ```bash
-curl -s -X POST 'http://127.0.0.1:8089/soap' \
+curl -s -X POST 'http://127.0.0.1:8089/soap/auth' \
   -H 'Content-Type: text/xml' \
   -H 'SOAPAction: Login' \
   --data-binary '<?xml version="1.0"?>
@@ -947,7 +1011,7 @@ curl -s -X POST 'http://127.0.0.1:8089/soap' \
   <soap:Body>
     <lab:Login>
       <lab:Username>admin_aurora</lab:Username>
-      <lab:Password>R9v!tQ2mZx#4</lab:Password>
+      <lab:Password>adminpass1</lab:Password>
     </lab:Login>
   </soap:Body>
 </soap:Envelope>'
@@ -978,8 +1042,10 @@ curl -s -X POST 'http://127.0.0.1:8089/soap' \
 
 ### SOAP: Refresh Token
 
+Use `/soap/auth` para reautenticacao:
+
 ```bash
-curl -s -X POST 'http://127.0.0.1:8089/soap' \
+curl -s -X POST 'http://127.0.0.1:8089/soap/auth' \
   -H 'Content-Type: text/xml' \
   -H 'SOAPAction: RefreshToken' \
   --data-binary '<?xml version="1.0"?>
@@ -1028,6 +1094,14 @@ Resultado esperado:
 Content-Type: application/xml
 ```
 
+Algumas ferramentas DAST embrulham o XML do exemplo como uma string escapada, por exemplo:
+
+```xml
+<?xml version='1.1' encoding='UTF-8'?><String>&lt;product&gt;&lt;sku&gt;SKU-900&lt;/sku&gt;&lt;name&gt;Scanner Lab Device&lt;/name&gt;&lt;price&gt;199.90&lt;/price&gt;&lt;stock&gt;7&lt;/stock&gt;&lt;/product&gt;</String>
+```
+
+A aplicacao vulneravel aceita tanto o corpo direto `<product>` quanto esse wrapper `<String>` usado por scanners.
+
 ### SOAP/XML: Admin Edita Produto Com PUSH
 
 ```bash
@@ -1072,6 +1146,26 @@ Resultado esperado:
 curl -s 'http://127.0.0.1:8089/audit'
 ```
 
+### Evidencias De Login
+
+Use `/login-tracking` para coletar somente evidencias de autenticacao:
+
+```bash
+curl -s 'http://127.0.0.1:8089/login-tracking?limit=100'
+```
+
+Essa rota mostra:
+
+- todas as tentativas de login
+- logins com sucesso e falhas de login
+- evidencias de token expirado ou sessao expirada
+- solicitacoes de refresh token
+- emissao de novo access token
+- uso do refresh token
+- eventos de validacao de token
+
+As evidencias ficam em memoria e sao apagadas quando o container reinicia.
+
 Resposta esperada:
 
 ```text
@@ -1113,17 +1207,27 @@ Alvos REST JSON:
 - `DELETE /api/admin/products`
 - `GET /api/user/products`
 - `POST /api/user/products`
+- `GET /api/products/eletronico?q=camera' OR '1'='1`
+- `GET /api/products/smarphone?id=1 OR 1=1`
+- `GET /api/products/laptops?sort=name; DROP TABLE products`
+- `GET /api/products/books?min_value=0 UNION SELECT username,password,1,1,1 FROM users`
+- `GET /comments?preview=<script>alert(1)</script>`
+- `POST /comments`
 
 Alvos SOAP/XML:
 
-- `POST /soap` com `SOAPAction: Login`
-- `POST /soap` com `SOAPAction: RefreshToken`
-- `POST /soap` com `SOAPAction: ValidateToken`
+- `POST /soap/auth` com `SOAPAction: Login`
+- `POST /soap/auth` com `SOAPAction: RefreshToken`
+- `POST /soap/auth` com `SOAPAction: ValidateToken`
 - `POST /soap` com `SOAPAction: SearchUser`
 - `POST /soap` com `DOCTYPE` / `ENTITY`
 - `POST /admin/products`
 - `PUSH /admin/products`
 - `DELETE /admin/products`
+- `GET /products/eletronico?q=camera' OR '1'='1`
+- `GET /products/smarphone?id=1 OR 1=1`
+- `GET /products/laptops?promotion=yes`
+- `GET /products/books?q=SQL' OR '1'='1`
 
 Testes de autenticacao:
 

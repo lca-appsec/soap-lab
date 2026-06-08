@@ -13,7 +13,7 @@ Content-Type: application/json
 
 {
   "username": "admin_aurora",
-  "password": "R9v!tQ2mZx#4"
+  "password": "adminpass1"
 }
 
 ### REST validate token
@@ -75,7 +75,7 @@ Content-Type: application/json
 
 {
   "username": "user_apollo",
-  "password": "P6d@Xe1mRt$7"
+  "password": "userpass1"
 }
 
 ### REST user list products

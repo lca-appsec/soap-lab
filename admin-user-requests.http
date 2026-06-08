@@ -8,7 +8,7 @@ SOAPAction: Login
   <soap:Body>
     <lab:Login>
       <lab:Username>admin_aurora</lab:Username>
-      <lab:Password>R9v!tQ2mZx#4</lab:Password>
+      <lab:Password>adminpass1</lab:Password>
     </lab:Login>
   </soap:Body>
 </soap:Envelope>
@@ -60,7 +60,7 @@ SOAPAction: Login
   <soap:Body>
     <lab:Login>
       <lab:Username>user_apollo</lab:Username>
-      <lab:Password>P6d@Xe1mRt$7</lab:Password>
+      <lab:Password>userpass1</lab:Password>
     </lab:Login>
   </soap:Body>
 </soap:Envelope>

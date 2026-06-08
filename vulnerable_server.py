@@ -75,6 +75,73 @@ def product_for_user(sku, product):
     return {"sku": sku, "name": product["name"], "available": product["stock"] > 0}
 
 
+def category_slug_from_path(path, prefix):
+    if not path.startswith(prefix):
+        return ""
+    slug = path[len(prefix):].strip("/")
+    return slug if "/" not in slug else ""
+
+
+def filter_catalog_products(category, query):
+    products = server.FUZZING_CATALOG.get(category, [])
+    search = query.get("q", [""])[0]
+    promotion = query.get("promotion", [""])[0]
+    min_value = query.get("min_value", [""])[0]
+
+    filtered = products
+    if search:
+        lowered = search.lower()
+        filtered = [
+            product for product in filtered
+            if lowered in product["name"].lower() or lowered in product["description"].lower()
+        ]
+    if promotion in {"yes", "no"}:
+        filtered = [product for product in filtered if product["promotion"] == promotion]
+    if min_value:
+        try:
+            minimum = float(min_value)
+            filtered = [product for product in filtered if float(product["value"]) >= minimum]
+        except ValueError:
+            pass
+
+    return filtered
+
+
+def looks_like_sql_injection(query):
+    combined = " ".join(values[0] for values in query.values() if values).lower()
+    markers = ["'", "\"", " or ", " union ", "--", ";", "/*", " drop ", " select ", " sleep(", "1=1"]
+    return any(marker in combined for marker in markers)
+
+
+def vulnerable_catalog_sql(category, query):
+    search = query.get("q", [""])[0]
+    product_id = query.get("id", [""])[0]
+    sort = query.get("sort", ["name"])[0]
+    promotion = query.get("promotion", [""])[0]
+    min_value = query.get("min_value", [""])[0]
+    sql = f"SELECT name, description, value, stock, promotion FROM products WHERE category = '{category}'"
+    if product_id:
+        sql += f" AND id = {product_id}"
+    if search:
+        sql += f" AND (name LIKE '%{search}%' OR description LIKE '%{search}%')"
+    if promotion:
+        sql += f" AND promotion = '{promotion}'"
+    if min_value:
+        sql += f" AND value >= {min_value}"
+    sql += f" ORDER BY {sort}"
+    return sql
+
+
+def catalog_query_parameters():
+    return [
+        {"name": "q", "in": "query", "required": False, "schema": {"type": "string"}, "example": "camera' OR '1'='1"},
+        {"name": "id", "in": "query", "required": False, "schema": {"type": "string"}, "example": "1 OR 1=1"},
+        {"name": "sort", "in": "query", "required": False, "schema": {"type": "string"}, "example": "name; DROP TABLE products"},
+        {"name": "promotion", "in": "query", "required": False, "schema": {"type": "string", "enum": ["yes", "no"]}},
+        {"name": "min_value", "in": "query", "required": False, "schema": {"type": "string"}, "example": "0 UNION SELECT username,password,1,1,1 FROM users"},
+    ]
+
+
 def rest_openapi_spec():
     return {
         "openapi": "3.0.3",
@@ -183,7 +250,20 @@ def rest_openapi_spec():
                     "responses": {"403": {"description": "Users can only GET"}},
                 },
             },
+            "/api/products/eletronico": {"get": {"summary": "Fuzzable electronics catalog with SQL injection parameters", "parameters": catalog_query_parameters(), "responses": {"200": {"description": "Electronics product list"}}}},
+            "/api/products/smarphone": {"get": {"summary": "Fuzzable smarphone catalog with SQL injection parameters", "parameters": catalog_query_parameters(), "responses": {"200": {"description": "Smarphone product list"}}}},
+            "/api/products/laptops": {"get": {"summary": "Fuzzable laptop catalog with SQL injection parameters", "parameters": catalog_query_parameters(), "responses": {"200": {"description": "Laptop product list"}}}},
+            "/api/products/books": {"get": {"summary": "Fuzzable books catalog with SQL injection parameters", "parameters": catalog_query_parameters(), "responses": {"200": {"description": "Books product list"}}}},
+            "/comments": {
+                "get": {"summary": "Stored XSS comment form", "responses": {"200": {"description": "HTML comment form"}}},
+                "post": {
+                    "summary": "Submit vulnerable comment",
+                    "requestBody": {"required": True, "content": {"application/x-www-form-urlencoded": {"schema": {"type": "object", "properties": {"name": {"type": "string"}, "comment": {"type": "string"}}}}}},
+                    "responses": {"200": {"description": "HTML page reflecting stored comment without escaping"}},
+                },
+            },
             "/api/audit": {"get": {"summary": "Read HTTP/auth audit events", "responses": {"200": {"description": "Audit log"}}}},
+            "/api/login-tracking": {"get": {"summary": "Read authentication tracking evidence", "responses": {"200": {"description": "Login and token tracking evidence"}}}},
         },
     }
 
@@ -206,7 +286,8 @@ def xml_openapi_spec():
             "/soap?wsdl": {"get": {"summary": "Download WSDL", "responses": {"200": {"description": "WSDL XML"}}}},
             "/soap": {
                 "post": {
-                    "summary": "SOAP endpoint for Login, RefreshToken, ValidateToken, GetAccount, TransferFunds, SearchUser, Logout",
+                    "summary": "SOAP endpoint for protected business operations: GetAccount, TransferFunds, SearchUser, Logout",
+                    "description": "Do not use this endpoint for authentication. Use POST /soap/auth with SOAPAction Login, RefreshToken or ValidateToken.",
                     "parameters": [
                         {
                             "name": "SOAPAction",
@@ -215,9 +296,6 @@ def xml_openapi_spec():
                             "schema": {
                                 "type": "string",
                                 "enum": [
-                                    "Login",
-                                    "RefreshToken",
-                                    "ValidateToken",
                                     "GetAccount",
                                     "TransferFunds",
                                     "SearchUser",
@@ -231,12 +309,37 @@ def xml_openapi_spec():
                         "content": {
                             "text/xml": {
                                 "schema": {"type": "string"},
-                                "example": "<?xml version=\"1.0\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\"><soap:Body><lab:Login><lab:Username>admin_aurora</lab:Username><lab:Password>R9v!tQ2mZx#4</lab:Password></lab:Login></soap:Body></soap:Envelope>",
+                                "example": "<?xml version=\"1.0\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\"><soap:Body><lab:GetAccount><lab:AccountId>9001</lab:AccountId></lab:GetAccount></soap:Body></soap:Envelope>",
                             },
                             "application/xml": {"schema": {"type": "string"}},
                         },
                     },
                     "responses": {"200": {"description": "SOAP XML response"}, "401": {"description": "SOAP auth fault"}},
+                }
+            },
+            "/soap/auth": {
+                "post": {
+                    "summary": "Dedicated SOAP authentication endpoint for Login, RefreshToken and ValidateToken",
+                    "description": "Use this endpoint with SOAPAction Login to obtain AccessToken/RefreshToken, SOAPAction RefreshToken to reauthenticate, and SOAPAction ValidateToken to validate the current access token. All auth interactions are written to the audit log.",
+                    "parameters": [
+                        {
+                            "name": "SOAPAction",
+                            "in": "header",
+                            "required": True,
+                            "schema": {"type": "string", "enum": ["Login", "RefreshToken", "ValidateToken"]},
+                        }
+                    ],
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "text/xml": {
+                                "schema": {"type": "string"},
+                                "example": "<?xml version=\"1.0\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\"><soap:Body><lab:Login><lab:Username>admin_aurora</lab:Username><lab:Password>adminpass1</lab:Password></lab:Login></soap:Body></soap:Envelope>",
+                            },
+                            "application/xml": {"schema": {"type": "string"}},
+                        },
+                    },
+                    "responses": {"200": {"description": "SOAP auth XML response"}, "400": {"description": "Unsupported auth action"}, "401": {"description": "SOAP auth fault"}},
                 }
             },
             "/admin/products": {
@@ -247,7 +350,16 @@ def xml_openapi_spec():
             "/user/products": {
                 "get": {"summary": "XML user product list", "security": [{"bearerAuth": []}], "responses": {"200": {"description": "XML response"}}}
             },
+            "/products/eletronico": {"get": {"summary": "XML electronics catalog with SQL injection parameters", "parameters": catalog_query_parameters(), "responses": {"200": {"description": "XML catalog response"}}}},
+            "/products/smarphone": {"get": {"summary": "XML smarphone catalog with SQL injection parameters", "parameters": catalog_query_parameters(), "responses": {"200": {"description": "XML catalog response"}}}},
+            "/products/laptops": {"get": {"summary": "XML laptop catalog with SQL injection parameters", "parameters": catalog_query_parameters(), "responses": {"200": {"description": "XML catalog response"}}}},
+            "/products/books": {"get": {"summary": "XML books catalog with SQL injection parameters", "parameters": catalog_query_parameters(), "responses": {"200": {"description": "XML catalog response"}}}},
+            "/comments": {
+                "get": {"summary": "Stored/reflected XSS comment form", "responses": {"200": {"description": "HTML form"}}},
+                "post": {"summary": "Submit vulnerable comment", "responses": {"200": {"description": "HTML response with unescaped stored comment"}}},
+            },
             "/audit": {"get": {"summary": "XML audit log", "responses": {"200": {"description": "XML audit events"}}}},
+            "/login-tracking": {"get": {"summary": "XML authentication tracking evidence", "responses": {"200": {"description": "Login and token tracking evidence"}}}},
         },
     }
 
@@ -261,6 +373,19 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(raw)))
         self.send_header("X-DAST-Lab", "vulnerable-rest-json")
+        self.send_header("Cache-Control", "no-store")
+        if headers:
+            for key, value in headers.items():
+                self.send_header(key, value)
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def send_html(self, status, body, headers=None):
+        raw = body.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(raw)))
+        self.send_header("X-DAST-Lab", "stored-xss-comment-form")
         self.send_header("Cache-Control", "no-store")
         if headers:
             for key, value in headers.items():
@@ -295,6 +420,7 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
                     "xml_soap": "/swagger/xml.json",
                     "rest_base": "/api",
                     "xml_base": "/soap",
+                    "xml_auth": "/soap/auth",
                 },
             )
             return
@@ -315,12 +441,29 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
                     "validate": "/api/validate",
                     "admin_products": "/api/admin/products",
                     "user_products": "/api/user/products",
+                    "fuzzing_products": [
+                        "/api/products/eletronico",
+                        "/api/products/smarphone",
+                        "/api/products/laptops",
+                        "/api/products/books",
+                    ],
+                    "xss_comments": "/comments",
                     "audit": "/api/audit",
+                    "login_tracking": "/api/login-tracking",
                 },
             )
             return
         if parsed.path == "/api/audit":
             self.send_json_api(200, {"events": server.AUDIT_LOG[-50:]})
+            return
+        if parsed.path == "/api/login-tracking":
+            query = parse_qs(parsed.query, keep_blank_values=True)
+            try:
+                limit = int(query.get("limit", ["100"])[0])
+            except ValueError:
+                limit = 100
+            limit = max(1, min(limit, 500))
+            self.send_json_api(200, server.login_tracking_report(limit))
             return
         if parsed.path == "/api/validate":
             self.rest_validate_token()
@@ -331,18 +474,38 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
         if parsed.path == "/api/user/products":
             self.rest_user_products_list()
             return
+        category = category_slug_from_path(parsed.path, "/api/products/")
+        if category:
+            self.rest_fuzzing_catalog(category, parsed)
+            return
+        category = category_slug_from_path(parsed.path, "/products/")
+        if category:
+            self.xml_fuzzing_catalog(category, parsed)
+            return
+        if parsed.path == "/comments":
+            self.render_comments_form(parsed)
+            return
         if parsed.path == "/":
             self.send_json_api(
                 200,
                 {
                     "name": "Vulnerable SOAP DAST Lab",
                     "soap": "/soap",
+                    "soap_auth": "/soap/auth",
                     "wsdl": "/soap?wsdl",
                     "rest_json": "/api",
                     "swagger_rest_json": "/swagger/rest.json",
                     "swagger_xml_soap": "/swagger/xml.json",
+                    "catalog_links": [
+                        "/products/eletronico?q=camera",
+                        "/products/smarphone?q=5G",
+                        "/products/laptops?promotion=yes",
+                        "/products/books?sort=name",
+                    ],
+                    "xss_comments": "/comments",
                     "verbs": "/verbs",
                     "audit": "/audit",
+                    "login_tracking": "/login-tracking",
                     "vulnerabilities": [
                         "jwt_alg_none",
                         "jwt_signature_bypass",
@@ -351,6 +514,8 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
                         "refresh_token_reuse",
                         "trace_reflection",
                         "unsafe_xml_reflection",
+                        "sql_injection_query_reflection",
+                        "stored_xss_comment_form",
                     ],
                 },
             )
@@ -377,12 +542,17 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
         if parsed.path == "/api/user/products":
             self.rest_user_write_forbidden("POST")
             return
-        if parsed.path != "/soap":
+        if parsed.path == "/comments":
+            self.submit_comment()
+            return
+        if parsed.path not in {"/soap", "/soap/auth"}:
             super().do_POST()
             return
 
         length = int(self.headers.get("Content-Length", "0"))
         raw_body = self.rfile.read(length).decode("utf-8", errors="replace")
+        requested_action = self.headers.get("SOAPAction", "").strip('"')
+        self.log_interaction_event("soap_request_received", action=requested_action, request_body=raw_body)
         if "<!DOCTYPE" in raw_body.upper() or "<!ENTITY" in raw_body.upper():
             # Vulnerability signal: this deliberately acknowledges dangerous XML features
             # instead of rejecting them before parsing.
@@ -413,6 +583,37 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
             return
 
         action = self.headers.get("SOAPAction", "").strip('"') or self.detect_action(root)
+        self._soap_action = action
+        if parsed.path == "/soap" and action in {"Login", "RefreshToken", "ValidateToken"}:
+            self.log_auth_event(
+                "vulnerable_soap_auth_wrong_route",
+                "failure",
+                error="auth_route_required",
+                details={"soap_action": action, "required_path": "/soap/auth"},
+            )
+            self.send_body(
+                400,
+                unsafe_response_element(
+                    "AuthRouteRequired",
+                    {"Action": action, "Hint": "Use /soap/auth for Login, RefreshToken and ValidateToken."},
+                ),
+            )
+            return
+        if parsed.path == "/soap/auth" and action not in {"Login", "RefreshToken", "ValidateToken"}:
+            self.log_auth_event(
+                "vulnerable_soap_auth_route_rejected",
+                "failure",
+                error="unsupported_auth_action",
+                details={"soap_action": action, "allowed_actions": ["Login", "RefreshToken", "ValidateToken"]},
+            )
+            self.send_body(
+                400,
+                unsafe_response_element(
+                    "UnsupportedAuthAction",
+                    {"Action": action, "Hint": "/soap/auth only accepts Login, RefreshToken or ValidateToken."},
+                ),
+            )
+            return
         handlers = {
             "Login": self.soap_login,
             "RefreshToken": self.soap_refresh_token,
@@ -598,6 +799,104 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
                 "catalog": [product_for_user(sku, product) for sku, product in server.PRODUCTS.items()],
             },
         )
+
+    def rest_fuzzing_catalog(self, category, parsed):
+        query = parse_qs(parsed.query, keep_blank_values=True)
+        if category not in server.FUZZING_CATALOG:
+            self.send_json_api(404, {"error": "category_not_found", "category": category})
+            return
+        injected = looks_like_sql_injection(query)
+        products = server.FUZZING_CATALOG[category] if injected else filter_catalog_products(category, query)
+        self.send_json_api(
+            200,
+            {
+                "path": parsed.path,
+                "category": category,
+                "count": len(products),
+                "products": products,
+                "query": {key: values[0] if values else "" for key, values in query.items()},
+                "vulnerableSql": vulnerable_catalog_sql(category, query),
+                "sqlInjectionAccepted": injected,
+                "warning": "Intentional lab behavior: query parameters are concatenated into a simulated SQL statement.",
+            },
+        )
+
+    def xml_fuzzing_catalog(self, category, parsed):
+        query = parse_qs(parsed.query, keep_blank_values=True)
+        if category not in server.FUZZING_CATALOG:
+            self.send_body(404, server.xml_document("response", {"error": "category_not_found", "category": category}))
+            return
+        injected = looks_like_sql_injection(query)
+        products = server.FUZZING_CATALOG[category] if injected else filter_catalog_products(category, query)
+        self.send_body(
+            200,
+            server.xml_document(
+                "response",
+                {
+                    "path": parsed.path,
+                    "category": category,
+                    "count": len(products),
+                    "products": products,
+                    "query": {key: values[0] if values else "" for key, values in query.items()},
+                    "vulnerableSql": vulnerable_catalog_sql(category, query),
+                    "sqlInjectionAccepted": injected,
+                    "warning": "Intentional lab behavior: query parameters are concatenated into a simulated SQL statement.",
+                },
+            ),
+        )
+
+    def render_comments_form(self, parsed):
+        query = parse_qs(parsed.query, keep_blank_values=True)
+        reflected = query.get("preview", [""])[0]
+        comments = "\n".join(
+            f"<article class=\"comment\"><strong>{item['name']}</strong><p>{item['comment']}</p></article>"
+            for item in server.COMMENTS[-25:]
+        )
+        html = f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Vulnerable Comment Lab</title>
+  <style>
+    body {{ font-family: Arial, sans-serif; margin: 32px; max-width: 920px; }}
+    label {{ display: block; margin-top: 12px; font-weight: 700; }}
+    input, textarea {{ width: 100%; padding: 10px; margin-top: 4px; }}
+    button {{ margin-top: 12px; padding: 10px 14px; }}
+    .comment {{ border: 1px solid #ccc; padding: 12px; margin: 12px 0; }}
+    .preview {{ background: #fff7d6; padding: 12px; margin: 12px 0; }}
+  </style>
+</head>
+<body>
+  <h1>Vulnerable Comment Lab</h1>
+  <nav>
+    <a href="/products/eletronico?q=camera">eletronico</a> |
+    <a href="/products/smarphone?q=5G">smarphone</a> |
+    <a href="/products/laptops?promotion=yes">laptops</a> |
+    <a href="/products/books?q=SQL">books</a>
+  </nav>
+  <p>This page is intentionally vulnerable to stored and reflected XSS for authorized DAST testing.</p>
+  <section class="preview">Preview: {reflected}</section>
+  <form method="POST" action="/comments">
+    <label>Name</label>
+    <input name="name" value="security-tester">
+    <label>Comment</label>
+    <textarea name="comment" rows="5"><script>alert('xss-lab')</script></textarea>
+    <button type="submit">Send comment</button>
+  </form>
+  <h2>Stored comments</h2>
+  {comments}
+</body>
+</html>"""
+        self.send_html(200, html)
+
+    def submit_comment(self):
+        length = int(self.headers.get("Content-Length", "0"))
+        raw_body = self.rfile.read(length).decode("utf-8", errors="replace")
+        data = parse_qs(raw_body, keep_blank_values=True)
+        name = data.get("name", ["anonymous"])[0]
+        comment = data.get("comment", [""])[0]
+        server.COMMENTS.append({"name": name, "comment": comment, "time": int(time.time())})
+        self.render_comments_form(urlparse("/comments?preview=" + comment))
 
     def rest_admin_product_create(self):
         payload, status, error = self.require_rest_role("admin")

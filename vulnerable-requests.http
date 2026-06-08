@@ -12,7 +12,7 @@ X-Fixed-Session-Id: attacker-controlled-session
   <soap:Body>
     <lab:Login>
       <lab:Username>user_apollo</lab:Username>
-      <lab:Password>P6d@Xe1mRt$7</lab:Password>
+      <lab:Password>userpass1</lab:Password>
     </lab:Login>
   </soap:Body>
 </soap:Envelope>
