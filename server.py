@@ -7,12 +7,19 @@ import json
 import os
 import re
 import secrets
+import sqlite3
 import time
 import uuid
+from datetime import datetime, timedelta, timezone
 from http import cookies
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 from xml.etree import ElementTree
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    ZoneInfo = None
 
 
 HOST = os.environ.get("SOAP_DAST_HOST", "127.0.0.1")
@@ -21,9 +28,11 @@ PUBLIC_HOST = os.environ.get("SOAP_DAST_PUBLIC_HOST", HOST)
 PUBLIC_PORT = int(os.environ.get("SOAP_DAST_PUBLIC_PORT", str(PORT)))
 JWT_SECRET = "change-me-only-for-this-dast-lab"
 JWT_ISSUER = "soap-dast-lab"
-ACCESS_TOKEN_TTL_SECONDS = 180
+ACCESS_TOKEN_TTL_SECONDS = 45
 REFRESH_TOKEN_TTL_SECONDS = 900
 SESSION_TTL_SECONDS = 600
+LOCAL_TIMEZONE_NAME = os.environ.get("SOAP_DAST_TIMEZONE", "America/Sao_Paulo")
+DB_PATH = os.environ.get("SOAP_DAST_DB_PATH", "/tmp/rest_soap_labs.db")
 
 USERS = {
     "admin_aurora": {
@@ -149,6 +158,24 @@ FUZZING_CATALOG = {
 
 COMMENTS = []
 
+ECOMMERCE_RECORDS = [
+    {"route_type": "categories", "slug": "audio-video", "title": "Audio e Video", "description": "TVs, soundbars, webcams, projetores e caixas inteligentes", "value": 0, "stock": 320, "status": "active", "metadata": "crawl_priority=high"},
+    {"route_type": "categories", "slug": "smart-home", "title": "Casa Inteligente", "description": "Sensores, cameras, fechaduras e automacao residencial", "value": 0, "stock": 180, "status": "active", "metadata": "crawl_priority=high"},
+    {"route_type": "categories", "slug": "energia", "title": "Energia e Carregadores", "description": "Nobreaks, carregadores, baterias e filtros de linha", "value": 0, "stock": 260, "status": "active", "metadata": "crawl_priority=medium"},
+    {"route_type": "brands", "slug": "orion", "title": "Orion Labs", "description": "Marca de notebooks, monitores e perifericos premium", "value": 0, "stock": 95, "status": "preferred", "metadata": "vendor_id=OR-001"},
+    {"route_type": "brands", "slug": "nebula", "title": "Nebula Devices", "description": "Linha gamer e entretenimento conectado", "value": 0, "stock": 130, "status": "active", "metadata": "vendor_id=NB-002"},
+    {"route_type": "brands", "slug": "sentinel", "title": "Sentinel Secure", "description": "Equipamentos com foco em seguranca fisica e digital", "value": 0, "stock": 72, "status": "active", "metadata": "vendor_id=SE-003"},
+    {"route_type": "deals", "slug": "flash-camera-4k", "title": "Oferta Camera 4K", "description": "Desconto relampago em cameras IP 4K", "value": 699.90, "stock": 12, "status": "expires_today", "metadata": "coupon=CAMERA20"},
+    {"route_type": "deals", "slug": "kit-home-office", "title": "Kit Home Office", "description": "Monitor, webcam, teclado e headset em pacote", "value": 2499.90, "stock": 8, "status": "active", "metadata": "bundle_id=KIT-442"},
+    {"route_type": "cart", "slug": "cart-demo-1001", "title": "Carrinho Demo 1001", "description": "Carrinho de teste com notebook, mouse e garantia", "value": 4759.70, "stock": 3, "status": "open", "metadata": "owner=user_apollo"},
+    {"route_type": "orders", "slug": "order-2026-9001", "title": "Pedido 2026-9001", "description": "Pedido de laboratorio para rastreamento DAST", "value": 3299.90, "stock": 1, "status": "processing", "metadata": "tracking=BR-LAB-9001"},
+    {"route_type": "reviews", "slug": "review-monitor-nebula", "title": "Review Monitor Nebula", "description": "Otimo brilho, resposta rapida e base estavel", "value": 4.8, "stock": 1, "status": "published", "metadata": "rating=4.8"},
+    {"route_type": "warranty", "slug": "warranty-laptop-orion", "title": "Garantia Laptop Orion", "description": "Plano estendido de 24 meses com suporte prioritario", "value": 399.90, "stock": 45, "status": "available", "metadata": "term_months=24"},
+    {"route_type": "shipping", "slug": "shipping-express-sp", "title": "Entrega Express Sao Paulo", "description": "Entrega no mesmo dia para itens em estoque", "value": 29.90, "stock": 100, "status": "available", "metadata": "sla_hours=8"},
+    {"route_type": "stores", "slug": "store-east-lab", "title": "Loja East Lab", "description": "Unidade de retirada para equipamentos eletronicos", "value": 0, "stock": 520, "status": "open", "metadata": "region=eastus"},
+    {"route_type": "support", "slug": "ticket-power-001", "title": "Ticket Nobreak", "description": "Chamado de suporte sobre autonomia de nobreak", "value": 0, "stock": 1, "status": "waiting_customer", "metadata": "severity=medium"},
+]
+
 REFRESH_TOKENS = {}
 SESSIONS = {}
 AUDIT_LOG = []
@@ -183,6 +210,202 @@ def b64url_decode(value):
 
 def now():
     return int(time.time())
+
+
+def db_connect():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def row_to_dict(row):
+    data = dict(row)
+    for key in ("value",):
+        if key in data:
+            data[key] = float(data[key])
+    return data
+
+
+def init_database():
+    with db_connect() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS catalog_products (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category TEXT NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT NOT NULL,
+                value REAL NOT NULL,
+                stock INTEGER NOT NULL,
+                promotion TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS comments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                comment TEXT NOT NULL,
+                created_at INTEGER NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ecommerce_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                route_type TEXT NOT NULL,
+                slug TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL,
+                value REAL NOT NULL,
+                stock INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                metadata TEXT NOT NULL
+            )
+            """
+        )
+        if conn.execute("SELECT COUNT(*) FROM catalog_products").fetchone()[0] == 0:
+            for category, products in FUZZING_CATALOG.items():
+                conn.executemany(
+                    """
+                    INSERT INTO catalog_products (category, name, description, value, stock, promotion)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        (
+                            category,
+                            product["name"],
+                            product["description"],
+                            product["value"],
+                            product["stock"],
+                            product["promotion"],
+                        )
+                        for product in products
+                    ],
+                )
+        if conn.execute("SELECT COUNT(*) FROM ecommerce_records").fetchone()[0] == 0:
+            conn.executemany(
+                """
+                INSERT INTO ecommerce_records (route_type, slug, title, description, value, stock, status, metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        item["route_type"],
+                        item["slug"],
+                        item["title"],
+                        item["description"],
+                        item["value"],
+                        item["stock"],
+                        item["status"],
+                        item["metadata"],
+                    )
+                    for item in ECOMMERCE_RECORDS
+                ],
+            )
+
+
+def catalog_category_exists(category):
+    with db_connect() as conn:
+        row = conn.execute("SELECT 1 FROM catalog_products WHERE category = ? LIMIT 1", (category,)).fetchone()
+        return row is not None
+
+
+def catalog_products(category, query=None, return_all=False):
+    query = query or {}
+    params = [category]
+    sql = "SELECT name, description, value, stock, promotion FROM catalog_products WHERE category = ?"
+    if not return_all:
+        search = query.get("q", [""])[0]
+        promotion = query.get("promotion", [""])[0]
+        min_value = query.get("min_value", [""])[0]
+        if search:
+            sql += " AND (LOWER(name) LIKE ? OR LOWER(description) LIKE ?)"
+            like = f"%{search.lower()}%"
+            params.extend([like, like])
+        if promotion in {"yes", "no"}:
+            sql += " AND promotion = ?"
+            params.append(promotion)
+        if min_value:
+            try:
+                sql += " AND value >= ?"
+                params.append(float(min_value))
+            except ValueError:
+                pass
+    sort = query.get("sort", ["name"])[0]
+    if sort in {"name", "value", "stock", "promotion"}:
+        sql += f" ORDER BY {sort}"
+    else:
+        sql += " ORDER BY name"
+    with db_connect() as conn:
+        return [row_to_dict(row) for row in conn.execute(sql, params).fetchall()]
+
+
+def add_comment(name, comment):
+    created_at = now()
+    with db_connect() as conn:
+        conn.execute(
+            "INSERT INTO comments (name, comment, created_at) VALUES (?, ?, ?)",
+            (name, comment, created_at),
+        )
+    return created_at
+
+
+def recent_comments(limit=25):
+    with db_connect() as conn:
+        rows = conn.execute(
+            "SELECT name, comment, created_at FROM comments ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [row_to_dict(row) for row in rows]
+
+
+def ecommerce_records(route_type, query=None):
+    query = query or {}
+    params = [route_type]
+    sql = "SELECT slug, title, description, value, stock, status, metadata FROM ecommerce_records WHERE route_type = ?"
+    search = query.get("q", [""])[0]
+    status = query.get("status", [""])[0]
+    if search:
+        sql += " AND (LOWER(title) LIKE ? OR LOWER(description) LIKE ? OR LOWER(metadata) LIKE ?)"
+        like = f"%{search.lower()}%"
+        params.extend([like, like, like])
+    if status:
+        sql += " AND status = ?"
+        params.append(status)
+    sql += " ORDER BY title"
+    with db_connect() as conn:
+        return [row_to_dict(row) for row in conn.execute(sql, params).fetchall()]
+
+
+def ecommerce_route_exists(route_type):
+    with db_connect() as conn:
+        row = conn.execute("SELECT 1 FROM ecommerce_records WHERE route_type = ? LIMIT 1", (route_type,)).fetchone()
+        return row is not None
+
+
+def local_timezone():
+    if ZoneInfo:
+        try:
+            return ZoneInfo(LOCAL_TIMEZONE_NAME)
+        except Exception:
+            pass
+    return timezone(timedelta(hours=-3), "America/Sao_Paulo")
+
+
+def local_time_fields(epoch_seconds):
+    try:
+        epoch = int(epoch_seconds)
+    except (TypeError, ValueError):
+        return {"local_time": "", "local_time_iso": "", "timezone": LOCAL_TIMEZONE_NAME}
+    dt = datetime.fromtimestamp(epoch, local_timezone())
+    return {
+        "local_time": dt.strftime("%Y-%m-%d %H:%M:%S %Z"),
+        "local_time_iso": dt.isoformat(timespec="seconds"),
+        "timezone": LOCAL_TIMEZONE_NAME,
+    }
 
 
 def token_fingerprint(token):
@@ -358,10 +581,21 @@ def is_login_tracking_event(entry):
 
 def login_tracking_report(limit=100):
     events = [entry for entry in AUDIT_LOG if is_login_tracking_event(entry)]
-    selected = events[-limit:]
+    selected = []
+    for entry in events[-limit:]:
+        enriched = dict(entry)
+        enriched.update(local_time_fields(entry.get("time")))
+        details = enriched.get("details")
+        if isinstance(details, dict):
+            enriched["details"] = dict(details)
+            for key in ("access_token_expires_at", "refresh_token_expires_at", "new_access_token_expires_at"):
+                if key in enriched["details"]:
+                    enriched["details"][f"{key}_local"] = local_time_fields(enriched["details"][key])["local_time"]
+        selected.append(enriched)
     summary = {
         "total_events": len(events),
         "returned_events": len(selected),
+        "timezone": LOCAL_TIMEZONE_NAME,
         "login_attempts": 0,
         "login_success": 0,
         "login_failure": 0,
@@ -484,6 +718,8 @@ WSDL = f"""<?xml version="1.0" encoding="UTF-8"?>
   <portType name="SecurityTestPortType"/>
 </definitions>
 """
+
+init_database()
 
 
 class SoapDastHandler(BaseHTTPRequestHandler):
@@ -1095,14 +1331,22 @@ class SoapDastHandler(BaseHTTPRequestHandler):
         return payload, None
 
     def soap_login(self, root):
+        started_at = time.perf_counter()
         username = xml_text(root, "Username")
         password = xml_text(root, "Password")
         user = USERS.get(username)
         if not user or not hmac.compare_digest(user["password"], password):
-            self.log_auth_event("login", "failure", username=username, error="invalid_credentials")
+            self.log_auth_event(
+                "login",
+                "failure",
+                username=username,
+                error="invalid_credentials",
+                details={"duration_ms": round((time.perf_counter() - started_at) * 1000, 2)},
+            )
             self.send_body(401, soap_fault("Auth.InvalidCredentials", "Invalid username or password"))
             return
         access_token, refresh_token, session_id, claims = issue_tokens(username)
+        refresh_record = REFRESH_TOKENS.get(refresh_token, {})
         self.log_auth_event(
             "login",
             "success",
@@ -1115,6 +1359,9 @@ class SoapDastHandler(BaseHTTPRequestHandler):
                 "refresh_token_fingerprint": token_fingerprint(refresh_token),
                 "access_token_expires_at": claims["exp"],
                 "access_token_ttl_seconds": ACCESS_TOKEN_TTL_SECONDS,
+                "refresh_token_expires_at": refresh_record.get("expires_at"),
+                "refresh_token_ttl_seconds": REFRESH_TOKEN_TTL_SECONDS,
+                "duration_ms": round((time.perf_counter() - started_at) * 1000, 2),
             },
         )
         headers = {"Set-Cookie": f"DASTSESSION={session_id}; HttpOnly; SameSite=Lax; Path=/"}
@@ -1134,6 +1381,7 @@ class SoapDastHandler(BaseHTTPRequestHandler):
         )
 
     def soap_refresh_token(self, root):
+        started_at = time.perf_counter()
         refresh_token = xml_text(root, "RefreshToken")
         old_refresh_fingerprint = token_fingerprint(refresh_token)
         result, error = rotate_refresh_token(refresh_token)
@@ -1142,11 +1390,15 @@ class SoapDastHandler(BaseHTTPRequestHandler):
                 "refresh_token",
                 "failure",
                 error=error,
-                details={"refresh_token_fingerprint": old_refresh_fingerprint},
+                details={
+                    "refresh_token_fingerprint": old_refresh_fingerprint,
+                    "duration_ms": round((time.perf_counter() - started_at) * 1000, 2),
+                },
             )
             self.send_body(401, soap_fault("Auth.RefreshFailed", error))
             return
         access_token, new_refresh_token, session_id, claims = result
+        refresh_record = REFRESH_TOKENS.get(new_refresh_token, {})
         self.log_auth_event(
             "refresh_token",
             "success",
@@ -1159,7 +1411,9 @@ class SoapDastHandler(BaseHTTPRequestHandler):
                 "new_refresh_token_fingerprint": token_fingerprint(new_refresh_token),
                 "new_access_token_fingerprint": token_fingerprint(access_token),
                 "access_token_expires_at": claims["exp"],
+                "refresh_token_expires_at": refresh_record.get("expires_at"),
                 "refresh_rotated": True,
+                "duration_ms": round((time.perf_counter() - started_at) * 1000, 2),
             },
         )
         headers = {"Set-Cookie": f"DASTSESSION={session_id}; HttpOnly; SameSite=Lax; Path=/"}

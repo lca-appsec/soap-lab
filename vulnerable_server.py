@@ -83,28 +83,7 @@ def category_slug_from_path(path, prefix):
 
 
 def filter_catalog_products(category, query):
-    products = server.FUZZING_CATALOG.get(category, [])
-    search = query.get("q", [""])[0]
-    promotion = query.get("promotion", [""])[0]
-    min_value = query.get("min_value", [""])[0]
-
-    filtered = products
-    if search:
-        lowered = search.lower()
-        filtered = [
-            product for product in filtered
-            if lowered in product["name"].lower() or lowered in product["description"].lower()
-        ]
-    if promotion in {"yes", "no"}:
-        filtered = [product for product in filtered if product["promotion"] == promotion]
-    if min_value:
-        try:
-            minimum = float(min_value)
-            filtered = [product for product in filtered if float(product["value"]) >= minimum]
-        except ValueError:
-            pass
-
-    return filtered
+    return server.catalog_products(category, query)
 
 
 def looks_like_sql_injection(query):
@@ -139,6 +118,14 @@ def catalog_query_parameters():
         {"name": "sort", "in": "query", "required": False, "schema": {"type": "string"}, "example": "name; DROP TABLE products"},
         {"name": "promotion", "in": "query", "required": False, "schema": {"type": "string", "enum": ["yes", "no"]}},
         {"name": "min_value", "in": "query", "required": False, "schema": {"type": "string"}, "example": "0 UNION SELECT username,password,1,1,1 FROM users"},
+    ]
+
+
+def ecommerce_query_parameters():
+    return [
+        {"name": "q", "in": "query", "required": False, "schema": {"type": "string"}, "example": "orion' OR '1'='1"},
+        {"name": "status", "in": "query", "required": False, "schema": {"type": "string"}, "example": "active"},
+        {"name": "debug", "in": "query", "required": False, "schema": {"type": "string"}, "example": "true"},
     ]
 
 
@@ -254,6 +241,16 @@ def rest_openapi_spec():
             "/api/products/smarphone": {"get": {"summary": "Fuzzable smarphone catalog with SQL injection parameters", "parameters": catalog_query_parameters(), "responses": {"200": {"description": "Smarphone product list"}}}},
             "/api/products/laptops": {"get": {"summary": "Fuzzable laptop catalog with SQL injection parameters", "parameters": catalog_query_parameters(), "responses": {"200": {"description": "Laptop product list"}}}},
             "/api/products/books": {"get": {"summary": "Fuzzable books catalog with SQL injection parameters", "parameters": catalog_query_parameters(), "responses": {"200": {"description": "Books product list"}}}},
+            "/api/ecommerce/categories": {"get": {"summary": "E-commerce electronics categories stored in SQLite", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "Category list"}}}},
+            "/api/ecommerce/brands": {"get": {"summary": "E-commerce electronics brands stored in SQLite", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "Brand list"}}}},
+            "/api/ecommerce/deals": {"get": {"summary": "E-commerce deals and bundles", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "Deals list"}}}},
+            "/api/ecommerce/cart": {"get": {"summary": "E-commerce cart records", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "Cart records"}}}},
+            "/api/ecommerce/orders": {"get": {"summary": "E-commerce order records", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "Order records"}}}},
+            "/api/ecommerce/reviews": {"get": {"summary": "E-commerce product reviews", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "Review records"}}}},
+            "/api/ecommerce/warranty": {"get": {"summary": "E-commerce warranty plans", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "Warranty records"}}}},
+            "/api/ecommerce/shipping": {"get": {"summary": "E-commerce shipping options", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "Shipping records"}}}},
+            "/api/ecommerce/stores": {"get": {"summary": "E-commerce store pickup locations", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "Store records"}}}},
+            "/api/ecommerce/support": {"get": {"summary": "E-commerce support tickets", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "Support records"}}}},
             "/comments": {
                 "get": {"summary": "Stored XSS comment form", "responses": {"200": {"description": "HTML comment form"}}},
                 "post": {
@@ -354,6 +351,16 @@ def xml_openapi_spec():
             "/products/smarphone": {"get": {"summary": "XML smarphone catalog with SQL injection parameters", "parameters": catalog_query_parameters(), "responses": {"200": {"description": "XML catalog response"}}}},
             "/products/laptops": {"get": {"summary": "XML laptop catalog with SQL injection parameters", "parameters": catalog_query_parameters(), "responses": {"200": {"description": "XML catalog response"}}}},
             "/products/books": {"get": {"summary": "XML books catalog with SQL injection parameters", "parameters": catalog_query_parameters(), "responses": {"200": {"description": "XML catalog response"}}}},
+            "/ecommerce/categories": {"get": {"summary": "XML e-commerce electronics categories stored in SQLite", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "XML category records"}}}},
+            "/ecommerce/brands": {"get": {"summary": "XML e-commerce electronics brands stored in SQLite", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "XML brand records"}}}},
+            "/ecommerce/deals": {"get": {"summary": "XML e-commerce deals and bundles", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "XML deal records"}}}},
+            "/ecommerce/cart": {"get": {"summary": "XML e-commerce cart records", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "XML cart records"}}}},
+            "/ecommerce/orders": {"get": {"summary": "XML e-commerce order records", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "XML order records"}}}},
+            "/ecommerce/reviews": {"get": {"summary": "XML e-commerce product reviews", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "XML review records"}}}},
+            "/ecommerce/warranty": {"get": {"summary": "XML e-commerce warranty plans", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "XML warranty records"}}}},
+            "/ecommerce/shipping": {"get": {"summary": "XML e-commerce shipping options", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "XML shipping records"}}}},
+            "/ecommerce/stores": {"get": {"summary": "XML e-commerce store pickup locations", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "XML store records"}}}},
+            "/ecommerce/support": {"get": {"summary": "XML e-commerce support tickets", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "XML support records"}}}},
             "/comments": {
                 "get": {"summary": "Stored/reflected XSS comment form", "responses": {"200": {"description": "HTML form"}}},
                 "post": {"summary": "Submit vulnerable comment", "responses": {"200": {"description": "HTML response with unescaped stored comment"}}},
@@ -447,6 +454,18 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
                         "/api/products/laptops",
                         "/api/products/books",
                     ],
+                    "ecommerce": [
+                        "/api/ecommerce/categories",
+                        "/api/ecommerce/brands",
+                        "/api/ecommerce/deals",
+                        "/api/ecommerce/cart",
+                        "/api/ecommerce/orders",
+                        "/api/ecommerce/reviews",
+                        "/api/ecommerce/warranty",
+                        "/api/ecommerce/shipping",
+                        "/api/ecommerce/stores",
+                        "/api/ecommerce/support",
+                    ],
                     "xss_comments": "/comments",
                     "audit": "/api/audit",
                     "login_tracking": "/api/login-tracking",
@@ -478,9 +497,17 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
         if category:
             self.rest_fuzzing_catalog(category, parsed)
             return
+        route_type = category_slug_from_path(parsed.path, "/api/ecommerce/")
+        if route_type:
+            self.rest_ecommerce_records(route_type, parsed)
+            return
         category = category_slug_from_path(parsed.path, "/products/")
         if category:
             self.xml_fuzzing_catalog(category, parsed)
+            return
+        route_type = category_slug_from_path(parsed.path, "/ecommerce/")
+        if route_type:
+            self.xml_ecommerce_records(route_type, parsed)
             return
         if parsed.path == "/comments":
             self.render_comments_form(parsed)
@@ -501,6 +528,18 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
                         "/products/smarphone?q=5G",
                         "/products/laptops?promotion=yes",
                         "/products/books?sort=name",
+                    ],
+                    "ecommerce_links": [
+                        "/ecommerce/categories",
+                        "/ecommerce/brands?q=orion",
+                        "/ecommerce/deals?status=active",
+                        "/ecommerce/cart",
+                        "/ecommerce/orders",
+                        "/ecommerce/reviews",
+                        "/ecommerce/warranty",
+                        "/ecommerce/shipping",
+                        "/ecommerce/stores",
+                        "/ecommerce/support",
                     ],
                     "xss_comments": "/comments",
                     "verbs": "/verbs",
@@ -664,6 +703,7 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
         return payload, None, None
 
     def rest_login(self):
+        started_at = time.perf_counter()
         try:
             data = self.read_json_api_body()
         except json.JSONDecodeError as exc:
@@ -673,7 +713,13 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
         password = str(data.get("password", ""))
         user = server.USERS.get(username)
         if not user or user["password"] != password:
-            self.log_auth_event("vulnerable_rest_login", "failure", username=username, error="invalid_credentials")
+            self.log_auth_event(
+                "vulnerable_rest_login",
+                "failure",
+                username=username,
+                error="invalid_credentials",
+                details={"duration_ms": round((time.perf_counter() - started_at) * 1000, 2)},
+            )
             self.send_json_api(401, {"error": "invalid_credentials"})
             return
         access_token, refresh_token, session_id, claims = server.issue_tokens(username)
@@ -683,6 +729,7 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
             server.REFRESH_TOKENS[refresh_token]["session_id"] = fixed_session
             access_token, claims = server.make_jwt(username, user["role"], fixed_session)
             session_id = fixed_session
+        refresh_record = server.REFRESH_TOKENS.get(refresh_token, {})
         self.log_auth_event(
             "vulnerable_rest_login",
             "success",
@@ -693,7 +740,12 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
             details={
                 "access_token_fingerprint": server.token_fingerprint(access_token),
                 "refresh_token_fingerprint": server.token_fingerprint(refresh_token),
+                "access_token_expires_at": claims["exp"],
+                "access_token_ttl_seconds": server.ACCESS_TOKEN_TTL_SECONDS,
+                "refresh_token_expires_at": refresh_record.get("expires_at"),
+                "refresh_token_ttl_seconds": server.REFRESH_TOKEN_TTL_SECONDS,
                 "session_fixation_used": bool(fixed_session),
+                "duration_ms": round((time.perf_counter() - started_at) * 1000, 2),
             },
         )
         self.send_json_api(
@@ -710,6 +762,7 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
         )
 
     def rest_refresh_token(self):
+        started_at = time.perf_counter()
         try:
             data = self.read_json_api_body()
         except json.JSONDecodeError as exc:
@@ -722,9 +775,27 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
                 "vulnerable_rest_refresh_token",
                 "failure",
                 error="refresh_token_not_found",
-                details={"refresh_token_fingerprint": server.token_fingerprint(refresh_token)},
+                details={
+                    "refresh_token_fingerprint": server.token_fingerprint(refresh_token),
+                    "duration_ms": round((time.perf_counter() - started_at) * 1000, 2),
+                },
             )
             self.send_json_api(401, {"error": "refresh_token_not_found"})
+            return
+        if int(time.time()) >= int(record.get("expires_at", 0)):
+            self.log_auth_event(
+                "vulnerable_rest_refresh_token",
+                "failure",
+                error="refresh_token_expired",
+                username=record.get("username"),
+                session_id=record.get("session_id"),
+                details={
+                    "refresh_token_fingerprint": server.token_fingerprint(refresh_token),
+                    "refresh_token_expires_at": record.get("expires_at"),
+                    "duration_ms": round((time.perf_counter() - started_at) * 1000, 2),
+                },
+            )
+            self.send_json_api(401, {"error": "refresh_token_expired"})
             return
         user = server.USERS[record["username"]]
         access_token, claims = server.make_jwt(record["username"], user["role"], record["session_id"])
@@ -738,8 +809,11 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
             details={
                 "refresh_token_fingerprint": server.token_fingerprint(refresh_token),
                 "new_access_token_fingerprint": server.token_fingerprint(access_token),
+                "new_access_token_expires_at": claims["exp"],
+                "refresh_token_expires_at": record.get("expires_at"),
                 "refresh_rotated": False,
                 "vulnerability": "refresh_token_reuse_allowed",
+                "duration_ms": round((time.perf_counter() - started_at) * 1000, 2),
             },
         )
         self.send_json_api(
@@ -802,16 +876,18 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
 
     def rest_fuzzing_catalog(self, category, parsed):
         query = parse_qs(parsed.query, keep_blank_values=True)
-        if category not in server.FUZZING_CATALOG:
+        if not server.catalog_category_exists(category):
             self.send_json_api(404, {"error": "category_not_found", "category": category})
             return
         injected = looks_like_sql_injection(query)
-        products = server.FUZZING_CATALOG[category] if injected else filter_catalog_products(category, query)
+        products = server.catalog_products(category, query, return_all=injected)
         self.send_json_api(
             200,
             {
                 "path": parsed.path,
                 "category": category,
+                "storage": "sqlite",
+                "database": server.DB_PATH,
                 "count": len(products),
                 "products": products,
                 "query": {key: values[0] if values else "" for key, values in query.items()},
@@ -823,11 +899,11 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
 
     def xml_fuzzing_catalog(self, category, parsed):
         query = parse_qs(parsed.query, keep_blank_values=True)
-        if category not in server.FUZZING_CATALOG:
+        if not server.catalog_category_exists(category):
             self.send_body(404, server.xml_document("response", {"error": "category_not_found", "category": category}))
             return
         injected = looks_like_sql_injection(query)
-        products = server.FUZZING_CATALOG[category] if injected else filter_catalog_products(category, query)
+        products = server.catalog_products(category, query, return_all=injected)
         self.send_body(
             200,
             server.xml_document(
@@ -835,6 +911,8 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
                 {
                     "path": parsed.path,
                     "category": category,
+                    "storage": "sqlite",
+                    "database": server.DB_PATH,
                     "count": len(products),
                     "products": products,
                     "query": {key: values[0] if values else "" for key, values in query.items()},
@@ -845,12 +923,53 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
             ),
         )
 
+    def rest_ecommerce_records(self, route_type, parsed):
+        query = parse_qs(parsed.query, keep_blank_values=True)
+        if not server.ecommerce_route_exists(route_type):
+            self.send_json_api(404, {"error": "ecommerce_route_not_found", "route": route_type})
+            return
+        records = server.ecommerce_records(route_type, query)
+        self.send_json_api(
+            200,
+            {
+                "path": parsed.path,
+                "route": route_type,
+                "storage": "sqlite",
+                "database": server.DB_PATH,
+                "count": len(records),
+                "records": records,
+                "query": {key: values[0] if values else "" for key, values in query.items()},
+            },
+        )
+
+    def xml_ecommerce_records(self, route_type, parsed):
+        query = parse_qs(parsed.query, keep_blank_values=True)
+        if not server.ecommerce_route_exists(route_type):
+            self.send_body(404, server.xml_document("response", {"error": "ecommerce_route_not_found", "route": route_type}))
+            return
+        records = server.ecommerce_records(route_type, query)
+        self.send_body(
+            200,
+            server.xml_document(
+                "response",
+                {
+                    "path": parsed.path,
+                    "route": route_type,
+                    "storage": "sqlite",
+                    "database": server.DB_PATH,
+                    "count": len(records),
+                    "records": records,
+                    "query": {key: values[0] if values else "" for key, values in query.items()},
+                },
+            ),
+        )
+
     def render_comments_form(self, parsed):
         query = parse_qs(parsed.query, keep_blank_values=True)
         reflected = query.get("preview", [""])[0]
         comments = "\n".join(
             f"<article class=\"comment\"><strong>{item['name']}</strong><p>{item['comment']}</p></article>"
-            for item in server.COMMENTS[-25:]
+            for item in server.recent_comments(25)
         )
         html = f"""<!doctype html>
 <html lang="en">
@@ -895,7 +1014,7 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
         data = parse_qs(raw_body, keep_blank_values=True)
         name = data.get("name", ["anonymous"])[0]
         comment = data.get("comment", [""])[0]
-        server.COMMENTS.append({"name": name, "comment": comment, "time": int(time.time())})
+        server.add_comment(name, comment)
         self.render_comments_form(urlparse("/comments?preview=" + comment))
 
     def rest_admin_product_create(self):
@@ -1016,11 +1135,18 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
         return payload, None
 
     def soap_login(self, root):
+        started_at = time.perf_counter()
         username = server.xml_text(root, "Username")
         password = server.xml_text(root, "Password")
         user = server.USERS.get(username)
         if not user or user["password"] != password:
-            self.log_auth_event("vulnerable_login", "failure", username=username, error="invalid_credentials")
+            self.log_auth_event(
+                "vulnerable_login",
+                "failure",
+                username=username,
+                error="invalid_credentials",
+                details={"duration_ms": round((time.perf_counter() - started_at) * 1000, 2)},
+            )
             self.send_body(401, server.soap_fault("Auth.InvalidCredentials", "Invalid username or password"))
             return
 
@@ -1033,6 +1159,7 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
             refresh_record["session_id"] = fixed_session
             access_token, claims = server.make_jwt(username, user["role"], fixed_session)
             session_id = fixed_session
+        refresh_record = server.REFRESH_TOKENS.get(refresh_token, {})
         self.log_auth_event(
             "vulnerable_login",
             "success",
@@ -1043,8 +1170,13 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
             details={
                 "access_token_fingerprint": server.token_fingerprint(access_token),
                 "refresh_token_fingerprint": server.token_fingerprint(refresh_token),
+                "access_token_expires_at": claims["exp"],
+                "access_token_ttl_seconds": server.ACCESS_TOKEN_TTL_SECONDS,
+                "refresh_token_expires_at": refresh_record.get("expires_at"),
+                "refresh_token_ttl_seconds": server.REFRESH_TOKEN_TTL_SECONDS,
                 "session_fixation_used": bool(fixed_session),
                 "cookie_security_attributes": "missing_httponly_samesite",
+                "duration_ms": round((time.perf_counter() - started_at) * 1000, 2),
             },
         )
 
@@ -1069,6 +1201,7 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
         )
 
     def soap_refresh_token(self, root):
+        started_at = time.perf_counter()
         refresh_token = server.xml_text(root, "RefreshToken")
         record = server.REFRESH_TOKENS.get(refresh_token)
         if not record:
@@ -1076,9 +1209,27 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
                 "vulnerable_refresh_token",
                 "failure",
                 error="refresh_token_not_found",
-                details={"refresh_token_fingerprint": server.token_fingerprint(refresh_token)},
+                details={
+                    "refresh_token_fingerprint": server.token_fingerprint(refresh_token),
+                    "duration_ms": round((time.perf_counter() - started_at) * 1000, 2),
+                },
             )
             self.send_body(401, server.soap_fault("Auth.RefreshFailed", "refresh_token_not_found"))
+            return
+        if int(time.time()) >= int(record.get("expires_at", 0)):
+            self.log_auth_event(
+                "vulnerable_refresh_token",
+                "failure",
+                error="refresh_token_expired",
+                username=record.get("username"),
+                session_id=record.get("session_id"),
+                details={
+                    "refresh_token_fingerprint": server.token_fingerprint(refresh_token),
+                    "refresh_token_expires_at": record.get("expires_at"),
+                    "duration_ms": round((time.perf_counter() - started_at) * 1000, 2),
+                },
+            )
+            self.send_body(401, server.soap_fault("Auth.RefreshFailed", "refresh_token_expired"))
             return
 
         # Vulnerability: refresh token is reusable and not rotated.
@@ -1094,8 +1245,11 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
             details={
                 "refresh_token_fingerprint": server.token_fingerprint(refresh_token),
                 "new_access_token_fingerprint": server.token_fingerprint(access_token),
+                "new_access_token_expires_at": claims["exp"],
+                "refresh_token_expires_at": record.get("expires_at"),
                 "refresh_rotated": False,
                 "vulnerability": "refresh_token_reuse_allowed",
+                "duration_ms": round((time.perf_counter() - started_at) * 1000, 2),
             },
         )
         self.send_body(

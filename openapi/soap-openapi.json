@@ -420,6 +420,396 @@
         }
       }
     },
+    "/ecommerce/categories": {
+      "get": {
+        "summary": "XML e-commerce electronics categories stored in SQLite",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "orion' OR '1'='1"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "active"
+          },
+          {
+            "name": "debug",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "true"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "XML category records"
+          }
+        }
+      }
+    },
+    "/ecommerce/brands": {
+      "get": {
+        "summary": "XML e-commerce electronics brands stored in SQLite",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "orion' OR '1'='1"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "active"
+          },
+          {
+            "name": "debug",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "true"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "XML brand records"
+          }
+        }
+      }
+    },
+    "/ecommerce/deals": {
+      "get": {
+        "summary": "XML e-commerce deals and bundles",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "orion' OR '1'='1"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "active"
+          },
+          {
+            "name": "debug",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "true"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "XML deal records"
+          }
+        }
+      }
+    },
+    "/ecommerce/cart": {
+      "get": {
+        "summary": "XML e-commerce cart records",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "orion' OR '1'='1"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "active"
+          },
+          {
+            "name": "debug",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "true"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "XML cart records"
+          }
+        }
+      }
+    },
+    "/ecommerce/orders": {
+      "get": {
+        "summary": "XML e-commerce order records",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "orion' OR '1'='1"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "active"
+          },
+          {
+            "name": "debug",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "true"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "XML order records"
+          }
+        }
+      }
+    },
+    "/ecommerce/reviews": {
+      "get": {
+        "summary": "XML e-commerce product reviews",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "orion' OR '1'='1"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "active"
+          },
+          {
+            "name": "debug",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "true"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "XML review records"
+          }
+        }
+      }
+    },
+    "/ecommerce/warranty": {
+      "get": {
+        "summary": "XML e-commerce warranty plans",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "orion' OR '1'='1"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "active"
+          },
+          {
+            "name": "debug",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "true"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "XML warranty records"
+          }
+        }
+      }
+    },
+    "/ecommerce/shipping": {
+      "get": {
+        "summary": "XML e-commerce shipping options",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "orion' OR '1'='1"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "active"
+          },
+          {
+            "name": "debug",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "true"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "XML shipping records"
+          }
+        }
+      }
+    },
+    "/ecommerce/stores": {
+      "get": {
+        "summary": "XML e-commerce store pickup locations",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "orion' OR '1'='1"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "active"
+          },
+          {
+            "name": "debug",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "true"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "XML store records"
+          }
+        }
+      }
+    },
+    "/ecommerce/support": {
+      "get": {
+        "summary": "XML e-commerce support tickets",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "orion' OR '1'='1"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "active"
+          },
+          {
+            "name": "debug",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "true"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "XML support records"
+          }
+        }
+      }
+    },
     "/comments": {
       "get": {
         "summary": "Stored/reflected XSS comment form",

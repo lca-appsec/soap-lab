@@ -29,6 +29,12 @@ Static OpenAPI files for import:
 - `openapi/rest-openapi.json`
 - `openapi/soap-openapi.json`
 
+Relational storage:
+
+- The lab uses SQLite by default at `/tmp/rest_soap_labs.db`.
+- Override the path with `SOAP_DAST_DB_PATH`.
+- Product catalog records, e-commerce records, and XSS comments are stored in relational tables.
+
 DAST authentication scripts and validation helpers:
 
 - `scripts/dast/SRM_Soap.js`
@@ -188,7 +194,7 @@ In vulnerable mode, JWT signature validation is intentionally weak.
 
 ### REST: Refresh Token
 
-The access token expires after 3 minutes.
+The access token expires after 45 seconds. The refresh token keeps the lab default validity of 15 minutes.
 
 Use the refresh token to get another access token:
 
@@ -516,7 +522,7 @@ The authentication flow is intentionally simple:
 ```text
 Login -> Access token + Refresh token
 Use access token as Bearer token
-Access token expires after 3 minutes
+Access token expires after 45 seconds; refresh token remains valid for 15 minutes
 Use refresh token to get a new dynamic JWT
 In vulnerable mode, the same refresh token can be reused
 ```
@@ -548,6 +554,16 @@ REST JSON targets:
 - `GET /api/products/smarphone?id=1 OR 1=1`
 - `GET /api/products/laptops?sort=name; DROP TABLE products`
 - `GET /api/products/books?min_value=0 UNION SELECT username,password,1,1,1 FROM users`
+- `GET /api/ecommerce/categories`
+- `GET /api/ecommerce/brands?q=orion`
+- `GET /api/ecommerce/deals?status=active`
+- `GET /api/ecommerce/cart`
+- `GET /api/ecommerce/orders`
+- `GET /api/ecommerce/reviews`
+- `GET /api/ecommerce/warranty`
+- `GET /api/ecommerce/shipping`
+- `GET /api/ecommerce/stores`
+- `GET /api/ecommerce/support`
 - `GET /comments?preview=<script>alert(1)</script>`
 - `POST /comments`
 
@@ -565,12 +581,22 @@ SOAP/XML targets:
 - `GET /products/smarphone?id=1 OR 1=1`
 - `GET /products/laptops?promotion=yes`
 - `GET /products/books?q=SQL' OR '1'='1`
+- `GET /ecommerce/categories`
+- `GET /ecommerce/brands?q=orion`
+- `GET /ecommerce/deals?status=active`
+- `GET /ecommerce/cart`
+- `GET /ecommerce/orders`
+- `GET /ecommerce/reviews`
+- `GET /ecommerce/warranty`
+- `GET /ecommerce/shipping`
+- `GET /ecommerce/stores`
+- `GET /ecommerce/support`
 
 Authentication tests:
 
 - Missing bearer token
 - Invalid JWT
-- Expired JWT after 3 minutes
+- Expired JWT after 45 seconds
 - Modified JWT payload
 - Modified JWT signature
 - `alg=none`
@@ -691,6 +717,12 @@ Arquivos OpenAPI estaticos para importar:
 
 - `openapi/rest-openapi.json`
 - `openapi/soap-openapi.json`
+
+Armazenamento relacional:
+
+- O laboratorio usa SQLite por padrao em `/tmp/rest_soap_labs.db`.
+- Altere o caminho com `SOAP_DAST_DB_PATH`.
+- Catalogo de produtos, registros de e-commerce e comentarios XSS ficam em tabelas relacionais.
 
 Scripts de autenticacao DAST e validadores:
 
@@ -851,7 +883,7 @@ No modo vulneravel, a validacao de assinatura JWT e fraca de proposito.
 
 ### REST: Refresh Token
 
-O access token expira depois de 3 minutos.
+O access token expira depois de 45 segundos. O refresh token mantem a validade padrao do laboratorio de 15 minutos.
 
 Use o refresh token para pegar outro access token:
 
@@ -1179,7 +1211,7 @@ O fluxo de autenticacao e simples:
 ```text
 Login -> Access token + Refresh token
 Usa access token como Bearer token
-Access token expira depois de 3 minutos
+Access token expira depois de 45 segundos; refresh token continua valido por 15 minutos
 Usa refresh token para pegar novo JWT dinamico
 No modo vulneravel, o mesmo refresh token pode ser reutilizado
 ```
@@ -1211,6 +1243,16 @@ Alvos REST JSON:
 - `GET /api/products/smarphone?id=1 OR 1=1`
 - `GET /api/products/laptops?sort=name; DROP TABLE products`
 - `GET /api/products/books?min_value=0 UNION SELECT username,password,1,1,1 FROM users`
+- `GET /api/ecommerce/categories`
+- `GET /api/ecommerce/brands?q=orion`
+- `GET /api/ecommerce/deals?status=active`
+- `GET /api/ecommerce/cart`
+- `GET /api/ecommerce/orders`
+- `GET /api/ecommerce/reviews`
+- `GET /api/ecommerce/warranty`
+- `GET /api/ecommerce/shipping`
+- `GET /api/ecommerce/stores`
+- `GET /api/ecommerce/support`
 - `GET /comments?preview=<script>alert(1)</script>`
 - `POST /comments`
 
@@ -1228,12 +1270,22 @@ Alvos SOAP/XML:
 - `GET /products/smarphone?id=1 OR 1=1`
 - `GET /products/laptops?promotion=yes`
 - `GET /products/books?q=SQL' OR '1'='1`
+- `GET /ecommerce/categories`
+- `GET /ecommerce/brands?q=orion`
+- `GET /ecommerce/deals?status=active`
+- `GET /ecommerce/cart`
+- `GET /ecommerce/orders`
+- `GET /ecommerce/reviews`
+- `GET /ecommerce/warranty`
+- `GET /ecommerce/shipping`
+- `GET /ecommerce/stores`
+- `GET /ecommerce/support`
 
 Testes de autenticacao:
 
 - Bearer token ausente
 - JWT invalido
-- JWT expirado depois de 3 minutos
+- JWT expirado depois de 45 segundos
 - Payload JWT alterado
 - Assinatura JWT alterada
 - `alg=none`
