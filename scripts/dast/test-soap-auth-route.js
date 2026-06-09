@@ -5,7 +5,7 @@ const username = process.env.SOAP_USERNAME || "admin_aurora";
 const password = process.env.SOAP_PASSWORD || "adminpass1";
 
 function tagValue(xml, tagName) {
-  const pattern = new RegExp(`<[^>]*:?${tagName}[^>]*>([\\s\\S]*?)</[^>]*:?${tagName}>`, "i");
+  const pattern = new RegExp(`<(?:[A-Za-z0-9_]+:)?${tagName}(?:\\s[^>]*)?>([\\s\\S]*?)</(?:[A-Za-z0-9_]+:)?${tagName}>`, "i");
   const match = xml.match(pattern);
   return match ? match[1].trim() : null;
 }

@@ -142,7 +142,7 @@ function validateTokenIfEnabled() {
 }
 
 function getXmlTagValue(xml, tagName) {
-    var regex = new RegExp("<[^>]*:?" + tagName + "[^>]*>([\\s\\S]*?)</[^>]*:?" + tagName + ">", "i");
+    var regex = new RegExp("<(?:[A-Za-z0-9_]+:)?" + tagName + "(?:\\s[^>]*)?>([\\s\\S]*?)</(?:[A-Za-z0-9_]+:)?" + tagName + ">", "i");
     var match = regex.exec(xml);
 
     if (match === null || match.length < 2) {
