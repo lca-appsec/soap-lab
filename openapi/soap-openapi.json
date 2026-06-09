@@ -33,7 +33,7 @@
     "/soap": {
       "post": {
         "summary": "SOAP endpoint for protected business operations: GetAccount, TransferFunds, SearchUser, Logout",
-        "description": "Do not use this endpoint for authentication. Use POST /soap/auth with SOAPAction Login, RefreshToken or ValidateToken.",
+        "description": "Do not use this endpoint for authentication. Use POST /soap/auth with SOAPAction Login or ValidateToken. Use POST /soap/refreshtoken with SOAPAction RefreshToken.",
         "parameters": [
           {
             "name": "SOAPAction",
@@ -78,8 +78,8 @@
     },
     "/soap/auth": {
       "post": {
-        "summary": "Dedicated SOAP authentication endpoint for Login, RefreshToken and ValidateToken",
-        "description": "Use this endpoint with SOAPAction Login to obtain AccessToken/RefreshToken, SOAPAction RefreshToken to reauthenticate, and SOAPAction ValidateToken to validate the current access token. All auth interactions are written to the audit log.",
+        "summary": "Dedicated SOAP authentication endpoint for Login and ValidateToken",
+        "description": "Use this endpoint with SOAPAction Login to obtain AccessToken/RefreshToken and SOAPAction ValidateToken to validate the current access token. Use /soap/refreshtoken for refresh token reauthentication. All auth interactions are written to the audit log.",
         "parameters": [
           {
             "name": "SOAPAction",
@@ -89,7 +89,6 @@
               "type": "string",
               "enum": [
                 "Login",
-                "RefreshToken",
                 "ValidateToken"
               ]
             }
@@ -117,6 +116,52 @@
           },
           "400": {
             "description": "Unsupported auth action"
+          },
+          "401": {
+            "description": "SOAP auth fault"
+          }
+        }
+      }
+    },
+    "/soap/refreshtoken": {
+      "post": {
+        "summary": "Dedicated SOAP refresh token endpoint",
+        "description": "Use this endpoint with SOAPAction RefreshToken to exchange a refresh token for a new dynamic access token. Refresh token interactions are written to the audit log and /login-tracking.",
+        "parameters": [
+          {
+            "name": "SOAPAction",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "RefreshToken"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "text/xml": {
+              "schema": {
+                "type": "string"
+              },
+              "example": "<?xml version=\"1.0\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\"><soap:Body><lab:RefreshToken><lab:RefreshToken>YOUR_REFRESH_TOKEN</lab:RefreshToken></lab:RefreshToken></soap:Body></soap:Envelope>"
+            },
+            "application/xml": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "SOAP refresh XML response"
+          },
+          "400": {
+            "description": "Unsupported refresh action"
           },
           "401": {
             "description": "SOAP auth fault"

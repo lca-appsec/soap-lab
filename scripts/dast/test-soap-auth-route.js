@@ -75,8 +75,8 @@ async function main() {
   }
   console.log("Login tokens extracted.");
 
-  const refresh = await soap("/soap/auth", "RefreshToken", refreshEnvelope(refreshToken));
-  requireStatus("POST /soap/auth SOAPAction RefreshToken", refresh, 200);
+  const refresh = await soap("/soap/refreshtoken", "RefreshToken", refreshEnvelope(refreshToken));
+  requireStatus("POST /soap/refreshtoken SOAPAction RefreshToken", refresh, 200);
   const refreshedAccessToken = tagValue(refresh.text, "AccessToken");
   if (!refreshedAccessToken) {
     throw new Error("RefreshToken did not return a new AccessToken.");
@@ -118,7 +118,7 @@ async function main() {
   }
 
   console.log("Login tracking contains login, refresh, and token validation evidence.");
-  console.log("OK: /soap/auth authentication route is working.");
+  console.log("OK: /soap/auth login/validation and /soap/refreshtoken refresh routes are working.");
 }
 
 main().catch((error) => {

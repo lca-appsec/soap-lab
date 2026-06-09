@@ -193,6 +193,7 @@ LOGIN_TRACKING_EVENT_MARKERS = {
 }
 LOGIN_TRACKING_PATHS = {
     "/soap/auth",
+    "/soap/refreshtoken",
     "/api/login",
     "/api/refresh",
     "/api/validate",
@@ -945,6 +946,7 @@ class SoapDastHandler(BaseHTTPRequestHandler):
                     "name": "SOAP DAST Lab",
                     "soap": "/soap",
                     "soap_auth": "/soap/auth",
+                    "soap_refresh_token": "/soap/refreshtoken",
                     "wsdl": "/soap?wsdl",
                     "verbs": "/verbs",
                     "admin": "/admin",
@@ -967,17 +969,14 @@ class SoapDastHandler(BaseHTTPRequestHandler):
                     "wsdl": "/soap?wsdl",
                     "soap_endpoint": "/soap",
                     "soap_auth_endpoint": "/soap/auth",
+                    "soap_refresh_token_endpoint": "/soap/refreshtoken",
                     "required_method": "POST",
                     "required_headers": ["Content-Type: text/xml", "SOAPAction: <operation>"],
-                    "operations": [
-                        "Login",
-                        "RefreshToken",
-                        "ValidateToken",
-                        "GetAccount",
-                        "TransferFunds",
-                        "SearchUser",
-                        "Logout",
-                    ],
+                    "business_operations": ["GetAccount", "TransferFunds", "SearchUser", "Logout"],
+                    "auth_operations": {
+                        "/soap/auth": ["Login", "ValidateToken"],
+                        "/soap/refreshtoken": ["RefreshToken"],
+                    },
                 },
             )
             return
@@ -999,9 +998,23 @@ class SoapDastHandler(BaseHTTPRequestHandler):
                 {
                     "service": "SOAP DAST Lab Auth",
                     "soap_auth_endpoint": "/soap/auth",
+                    "soap_refresh_token_endpoint": "/soap/refreshtoken",
                     "required_method": "POST",
-                    "allowed_soap_actions": ["Login", "RefreshToken", "ValidateToken"],
-                    "audit": "Authentication and reauthentication attempts are recorded in /audit.",
+                    "allowed_soap_actions": ["Login", "ValidateToken"],
+                    "audit": "Authentication and token validation attempts are recorded in /audit.",
+                    "login_tracking": "/login-tracking",
+                },
+            )
+            return
+        if parsed.path == "/soap/refreshtoken":
+            self.send_json(
+                200,
+                {
+                    "service": "SOAP DAST Lab Refresh Token",
+                    "soap_refresh_token_endpoint": "/soap/refreshtoken",
+                    "required_method": "POST",
+                    "allowed_soap_actions": ["RefreshToken"],
+                    "audit": "Refresh token requests are recorded in /audit and /login-tracking.",
                     "login_tracking": "/login-tracking",
                 },
             )
@@ -1315,7 +1328,7 @@ class SoapDastHandler(BaseHTTPRequestHandler):
         if parsed.path == "/user/products":
             self.handle_user_write_forbidden("POST")
             return
-        if parsed.path not in {"/soap", "/soap/auth"}:
+        if parsed.path not in {"/soap", "/soap/auth", "/soap/refreshtoken"}:
             self.send_json(404, {"error": "not_found"})
             return
 
@@ -1331,22 +1344,41 @@ class SoapDastHandler(BaseHTTPRequestHandler):
         self._soap_action = action
         self.log_interaction_event("soap_request_received", action=action, request_body=raw_body)
         if parsed.path == "/soap" and action in {"Login", "RefreshToken", "ValidateToken"}:
+            required_path = "/soap/refreshtoken" if action == "RefreshToken" else "/soap/auth"
             self.log_auth_event(
                 "soap_auth_wrong_route",
                 "failure",
                 error="auth_route_required",
-                details={"soap_action": action, "required_path": "/soap/auth"},
+                details={"soap_action": action, "required_path": required_path},
             )
-            self.send_body(400, soap_fault("Client.AuthRouteRequired", f"Use /soap/auth for SOAPAction: {action}"))
+            self.send_body(400, soap_fault("Client.AuthRouteRequired", f"Use {required_path} for SOAPAction: {action}"))
             return
-        if parsed.path == "/soap/auth" and action not in {"Login", "RefreshToken", "ValidateToken"}:
+        if parsed.path == "/soap/auth" and action == "RefreshToken":
+            self.log_auth_event(
+                "soap_refresh_wrong_route",
+                "failure",
+                error="refresh_route_required",
+                details={"soap_action": action, "required_path": "/soap/refreshtoken"},
+            )
+            self.send_body(400, soap_fault("Client.RefreshRouteRequired", "Use /soap/refreshtoken for SOAPAction: RefreshToken"))
+            return
+        if parsed.path == "/soap/auth" and action not in {"Login", "ValidateToken"}:
             self.log_auth_event(
                 "soap_auth_route_rejected",
                 "failure",
                 error="unsupported_auth_action",
-                details={"soap_action": action, "allowed_actions": ["Login", "RefreshToken", "ValidateToken"]},
+                details={"soap_action": action, "allowed_actions": ["Login", "ValidateToken"]},
             )
-            self.send_body(400, soap_fault("Client.UnsupportedAuthAction", f"/soap/auth only accepts Login, RefreshToken or ValidateToken, got: {action}"))
+            self.send_body(400, soap_fault("Client.UnsupportedAuthAction", f"/soap/auth only accepts Login or ValidateToken, got: {action}"))
+            return
+        if parsed.path == "/soap/refreshtoken" and action != "RefreshToken":
+            self.log_auth_event(
+                "soap_refresh_route_rejected",
+                "failure",
+                error="unsupported_refresh_action",
+                details={"soap_action": action, "allowed_actions": ["RefreshToken"]},
+            )
+            self.send_body(400, soap_fault("Client.UnsupportedRefreshAction", f"/soap/refreshtoken only accepts RefreshToken, got: {action}"))
             return
         handlers = {
             "Login": self.soap_login,

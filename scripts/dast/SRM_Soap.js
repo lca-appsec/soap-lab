@@ -64,7 +64,7 @@ function createLoginRequest() {
 }
 
 function createRefreshTokenRequest(currentRefreshToken) {
-    var refreshUrl = getAuthUrl();
+    var refreshUrl = getRefreshUrl();
 
     var tokenRequest = httpClient.createRequest(refreshUrl);
     tokenRequest.addHeader("Content-Type", "application/xml");
@@ -180,6 +180,15 @@ function getAuthUrl() {
     return "https://ca-rest-soap-labs.wonderfulcoast-2578bc9b.eastus.azurecontainerapps.io/soap/auth";
 }
 
+function getRefreshUrl() {
+    var configuredUrl = vc.variables['refreshBaseUrl'];
+    if (configuredUrl !== null && configuredUrl !== "") {
+        return normalizeRefreshUrl(configuredUrl);
+    }
+
+    return normalizeRefreshUrl(getAuthUrl());
+}
+
 function normalizeAuthUrl(url) {
     var normalized = trimValue(url);
 
@@ -187,9 +196,31 @@ function normalizeAuthUrl(url) {
         return normalized.replace(/\/$/, "");
     }
 
+    if (normalized.match(/\/soap\/refreshtoken\/?$/i)) {
+        return normalized.replace(/\/soap\/refreshtoken\/?$/i, "/soap/auth");
+    }
+
     if (normalized.match(/\/soap\/?$/i)) {
         return normalized.replace(/\/soap\/?$/i, "/soap/auth");
     }
 
     return normalized.replace(/\/$/, "") + "/soap/auth";
+}
+
+function normalizeRefreshUrl(url) {
+    var normalized = trimValue(url);
+
+    if (normalized.match(/\/soap\/refreshtoken\/?$/i)) {
+        return normalized.replace(/\/$/, "");
+    }
+
+    if (normalized.match(/\/soap\/auth\/?$/i)) {
+        return normalized.replace(/\/soap\/auth\/?$/i, "/soap/refreshtoken");
+    }
+
+    if (normalized.match(/\/soap\/?$/i)) {
+        return normalized.replace(/\/soap\/?$/i, "/soap/refreshtoken");
+    }
+
+    return normalized.replace(/\/$/, "") + "/soap/refreshtoken";
 }

@@ -16,7 +16,8 @@ It exposes two API styles:
 
 - REST API with JSON under `/api`
 - SOAP/XML API under `/soap`
-- Dedicated SOAP authentication, token validation, and reauthentication route under `/soap/auth`
+- Dedicated SOAP login and token validation route under `/soap/auth`
+- Dedicated SOAP refresh token route under `/soap/refreshtoken`
 
 Swagger/OpenAPI documents:
 
@@ -371,7 +372,7 @@ The SOAP response returns:
 ### SOAP: Validate Token
 
 ```bash
-curl -s -X POST 'http://127.0.0.1:8089/soap' \
+curl -s -X POST 'http://127.0.0.1:8089/soap/auth' \
   -H 'Content-Type: text/xml' \
   -H 'SOAPAction: ValidateToken' \
   -H 'Authorization: Bearer YOUR_ACCESS_TOKEN' \
@@ -385,10 +386,10 @@ curl -s -X POST 'http://127.0.0.1:8089/soap' \
 
 ### SOAP: Refresh Token
 
-Use `/soap/auth` for reauthentication:
+Use `/soap/refreshtoken` for reauthentication:
 
 ```bash
-curl -s -X POST 'http://127.0.0.1:8089/soap/auth' \
+curl -s -X POST 'http://127.0.0.1:8089/soap/refreshtoken' \
   -H 'Content-Type: text/xml' \
   -H 'SOAPAction: RefreshToken' \
   --data-binary '<?xml version="1.0"?>
@@ -570,7 +571,7 @@ REST JSON targets:
 SOAP/XML targets:
 
 - `POST /soap/auth` with `SOAPAction: Login`
-- `POST /soap/auth` with `SOAPAction: RefreshToken`
+- `POST /soap/refreshtoken` with `SOAPAction: RefreshToken`
 - `POST /soap/auth` with `SOAPAction: ValidateToken`
 - `POST /soap` with `SOAPAction: SearchUser`
 - `POST /soap` with `DOCTYPE` / `ENTITY`
@@ -705,7 +706,8 @@ Ela expoe dois estilos de API:
 
 - API REST com JSON em `/api`
 - API SOAP/XML em `/soap`
-- Rota dedicada de autenticacao, validacao de token e reautenticacao SOAP em `/soap/auth`
+- Rota dedicada de login e validacao de token SOAP em `/soap/auth`
+- Rota dedicada de refresh token SOAP em `/soap/refreshtoken`
 
 Documentos Swagger/OpenAPI:
 
@@ -1060,7 +1062,7 @@ A resposta SOAP retorna:
 ### SOAP: Validar Token
 
 ```bash
-curl -s -X POST 'http://127.0.0.1:8089/soap' \
+curl -s -X POST 'http://127.0.0.1:8089/soap/auth' \
   -H 'Content-Type: text/xml' \
   -H 'SOAPAction: ValidateToken' \
   -H 'Authorization: Bearer YOUR_ACCESS_TOKEN' \
@@ -1074,10 +1076,10 @@ curl -s -X POST 'http://127.0.0.1:8089/soap' \
 
 ### SOAP: Refresh Token
 
-Use `/soap/auth` para reautenticacao:
+Use `/soap/refreshtoken` para reautenticacao:
 
 ```bash
-curl -s -X POST 'http://127.0.0.1:8089/soap/auth' \
+curl -s -X POST 'http://127.0.0.1:8089/soap/refreshtoken' \
   -H 'Content-Type: text/xml' \
   -H 'SOAPAction: RefreshToken' \
   --data-binary '<?xml version="1.0"?>
@@ -1259,7 +1261,7 @@ Alvos REST JSON:
 Alvos SOAP/XML:
 
 - `POST /soap/auth` com `SOAPAction: Login`
-- `POST /soap/auth` com `SOAPAction: RefreshToken`
+- `POST /soap/refreshtoken` com `SOAPAction: RefreshToken`
 - `POST /soap/auth` com `SOAPAction: ValidateToken`
 - `POST /soap` com `SOAPAction: SearchUser`
 - `POST /soap` com `DOCTYPE` / `ENTITY`

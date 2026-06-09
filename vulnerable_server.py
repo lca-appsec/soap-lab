@@ -284,7 +284,7 @@ def xml_openapi_spec():
             "/soap": {
                 "post": {
                     "summary": "SOAP endpoint for protected business operations: GetAccount, TransferFunds, SearchUser, Logout",
-                    "description": "Do not use this endpoint for authentication. Use POST /soap/auth with SOAPAction Login, RefreshToken or ValidateToken.",
+                    "description": "Do not use this endpoint for authentication. Use POST /soap/auth with SOAPAction Login or ValidateToken. Use POST /soap/refreshtoken with SOAPAction RefreshToken.",
                     "parameters": [
                         {
                             "name": "SOAPAction",
@@ -316,14 +316,14 @@ def xml_openapi_spec():
             },
             "/soap/auth": {
                 "post": {
-                    "summary": "Dedicated SOAP authentication endpoint for Login, RefreshToken and ValidateToken",
-                    "description": "Use this endpoint with SOAPAction Login to obtain AccessToken/RefreshToken, SOAPAction RefreshToken to reauthenticate, and SOAPAction ValidateToken to validate the current access token. All auth interactions are written to the audit log.",
+                    "summary": "Dedicated SOAP authentication endpoint for Login and ValidateToken",
+                    "description": "Use this endpoint with SOAPAction Login to obtain AccessToken/RefreshToken and SOAPAction ValidateToken to validate the current access token. Use /soap/refreshtoken for refresh token reauthentication. All auth interactions are written to the audit log.",
                     "parameters": [
                         {
                             "name": "SOAPAction",
                             "in": "header",
                             "required": True,
-                            "schema": {"type": "string", "enum": ["Login", "RefreshToken", "ValidateToken"]},
+                            "schema": {"type": "string", "enum": ["Login", "ValidateToken"]},
                         }
                     ],
                     "requestBody": {
@@ -337,6 +337,31 @@ def xml_openapi_spec():
                         },
                     },
                     "responses": {"200": {"description": "SOAP auth XML response"}, "400": {"description": "Unsupported auth action"}, "401": {"description": "SOAP auth fault"}},
+                }
+            },
+            "/soap/refreshtoken": {
+                "post": {
+                    "summary": "Dedicated SOAP refresh token endpoint",
+                    "description": "Use this endpoint with SOAPAction RefreshToken to exchange a refresh token for a new dynamic access token. Refresh token interactions are written to the audit log and /login-tracking.",
+                    "parameters": [
+                        {
+                            "name": "SOAPAction",
+                            "in": "header",
+                            "required": True,
+                            "schema": {"type": "string", "enum": ["RefreshToken"]},
+                        }
+                    ],
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "text/xml": {
+                                "schema": {"type": "string"},
+                                "example": "<?xml version=\"1.0\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\"><soap:Body><lab:RefreshToken><lab:RefreshToken>YOUR_REFRESH_TOKEN</lab:RefreshToken></lab:RefreshToken></soap:Body></soap:Envelope>",
+                            },
+                            "application/xml": {"schema": {"type": "string"}},
+                        },
+                    },
+                    "responses": {"200": {"description": "SOAP refresh XML response"}, "400": {"description": "Unsupported refresh action"}, "401": {"description": "SOAP auth fault"}},
                 }
             },
             "/admin/products": {
@@ -428,6 +453,7 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
                     "rest_base": "/api",
                     "xml_base": "/soap",
                     "xml_auth": "/soap/auth",
+                    "xml_refresh_token": "/soap/refreshtoken",
                 },
             )
             return
@@ -519,6 +545,7 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
                     "name": "Vulnerable SOAP DAST Lab",
                     "soap": "/soap",
                     "soap_auth": "/soap/auth",
+                    "soap_refresh_token": "/soap/refreshtoken",
                     "wsdl": "/soap?wsdl",
                     "rest_json": "/api",
                     "swagger_rest_json": "/swagger/rest.json",
@@ -584,7 +611,7 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
         if parsed.path == "/comments":
             self.submit_comment()
             return
-        if parsed.path not in {"/soap", "/soap/auth"}:
+        if parsed.path not in {"/soap", "/soap/auth", "/soap/refreshtoken"}:
             super().do_POST()
             return
 
@@ -624,32 +651,63 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
         action = self.headers.get("SOAPAction", "").strip('"') or self.detect_action(root)
         self._soap_action = action
         if parsed.path == "/soap" and action in {"Login", "RefreshToken", "ValidateToken"}:
+            required_path = "/soap/refreshtoken" if action == "RefreshToken" else "/soap/auth"
             self.log_auth_event(
                 "vulnerable_soap_auth_wrong_route",
                 "failure",
                 error="auth_route_required",
-                details={"soap_action": action, "required_path": "/soap/auth"},
+                details={"soap_action": action, "required_path": required_path},
             )
             self.send_body(
                 400,
                 unsafe_response_element(
                     "AuthRouteRequired",
-                    {"Action": action, "Hint": "Use /soap/auth for Login, RefreshToken and ValidateToken."},
+                    {"Action": action, "Hint": f"Use {required_path} for SOAPAction {action}."},
                 ),
             )
             return
-        if parsed.path == "/soap/auth" and action not in {"Login", "RefreshToken", "ValidateToken"}:
+        if parsed.path == "/soap/auth" and action == "RefreshToken":
+            self.log_auth_event(
+                "vulnerable_soap_refresh_wrong_route",
+                "failure",
+                error="refresh_route_required",
+                details={"soap_action": action, "required_path": "/soap/refreshtoken"},
+            )
+            self.send_body(
+                400,
+                unsafe_response_element(
+                    "RefreshRouteRequired",
+                    {"Action": action, "Hint": "Use /soap/refreshtoken for SOAPAction RefreshToken."},
+                ),
+            )
+            return
+        if parsed.path == "/soap/auth" and action not in {"Login", "ValidateToken"}:
             self.log_auth_event(
                 "vulnerable_soap_auth_route_rejected",
                 "failure",
                 error="unsupported_auth_action",
-                details={"soap_action": action, "allowed_actions": ["Login", "RefreshToken", "ValidateToken"]},
+                details={"soap_action": action, "allowed_actions": ["Login", "ValidateToken"]},
             )
             self.send_body(
                 400,
                 unsafe_response_element(
                     "UnsupportedAuthAction",
-                    {"Action": action, "Hint": "/soap/auth only accepts Login, RefreshToken or ValidateToken."},
+                    {"Action": action, "Hint": "/soap/auth only accepts Login or ValidateToken."},
+                ),
+            )
+            return
+        if parsed.path == "/soap/refreshtoken" and action != "RefreshToken":
+            self.log_auth_event(
+                "vulnerable_soap_refresh_route_rejected",
+                "failure",
+                error="unsupported_refresh_action",
+                details={"soap_action": action, "allowed_actions": ["RefreshToken"]},
+            )
+            self.send_body(
+                400,
+                unsafe_response_element(
+                    "UnsupportedRefreshAction",
+                    {"Action": action, "Hint": "/soap/refreshtoken only accepts RefreshToken."},
                 ),
             )
             return
