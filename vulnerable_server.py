@@ -725,11 +725,10 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
         access_token, refresh_token, session_id, claims = server.issue_tokens(username)
         fixed_session = self.headers.get("X-Fixed-Session-Id")
         if fixed_session:
-            server.SESSIONS[fixed_session] = server.SESSIONS.pop(session_id)
-            server.REFRESH_TOKENS[refresh_token]["session_id"] = fixed_session
+            server.update_session_id(session_id, fixed_session)
             access_token, claims = server.make_jwt(username, user["role"], fixed_session)
             session_id = fixed_session
-        refresh_record = server.REFRESH_TOKENS.get(refresh_token, {})
+        refresh_record = server.get_refresh_token_record(refresh_token) or {}
         self.log_auth_event(
             "vulnerable_rest_login",
             "success",
@@ -769,7 +768,7 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
             self.send_json_api(400, {"error": "invalid_json", "parser_error": str(exc)})
             return
         refresh_token = str(data.get("refreshToken") or data.get("refresh_token") or "")
-        record = server.REFRESH_TOKENS.get(refresh_token)
+        record = server.get_refresh_token_record(refresh_token)
         if not record:
             self.log_auth_event(
                 "vulnerable_rest_refresh_token",
@@ -1154,12 +1153,10 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
         fixed_session = self.headers.get("X-Fixed-Session-Id")
         if fixed_session:
             # Vulnerability: session fixation through attacker-supplied session id.
-            server.SESSIONS[fixed_session] = server.SESSIONS.pop(session_id)
-            refresh_record = server.REFRESH_TOKENS[refresh_token]
-            refresh_record["session_id"] = fixed_session
+            server.update_session_id(session_id, fixed_session)
             access_token, claims = server.make_jwt(username, user["role"], fixed_session)
             session_id = fixed_session
-        refresh_record = server.REFRESH_TOKENS.get(refresh_token, {})
+        refresh_record = server.get_refresh_token_record(refresh_token) or {}
         self.log_auth_event(
             "vulnerable_login",
             "success",
@@ -1203,7 +1200,7 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
     def soap_refresh_token(self, root):
         started_at = time.perf_counter()
         refresh_token = server.xml_text(root, "RefreshToken")
-        record = server.REFRESH_TOKENS.get(refresh_token)
+        record = server.get_refresh_token_record(refresh_token)
         if not record:
             self.log_auth_event(
                 "vulnerable_refresh_token",

@@ -266,6 +266,27 @@ def init_database():
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sessions (
+                session_id TEXT PRIMARY KEY,
+                username TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS refresh_tokens (
+                refresh_token TEXT PRIMARY KEY,
+                username TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                expires_at INTEGER NOT NULL,
+                active INTEGER NOT NULL
+            )
+            """
+        )
         if conn.execute("SELECT COUNT(*) FROM catalog_products").fetchone()[0] == 0:
             for category, products in FUZZING_CATALOG.items():
                 conn.executemany(
@@ -386,6 +407,98 @@ def ecommerce_route_exists(route_type):
         return row is not None
 
 
+def save_session(session_id, username, created_at, expires_at):
+    SESSIONS[session_id] = {"username": username, "created_at": created_at, "expires_at": expires_at}
+    with db_connect() as conn:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO sessions (session_id, username, created_at, expires_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (session_id, username, created_at, expires_at),
+        )
+
+
+def get_session(session_id):
+    if session_id in SESSIONS:
+        return SESSIONS[session_id]
+    with db_connect() as conn:
+        row = conn.execute(
+            "SELECT username, created_at, expires_at FROM sessions WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()
+    if not row:
+        return None
+    session = {"username": row["username"], "created_at": int(row["created_at"]), "expires_at": int(row["expires_at"])}
+    SESSIONS[session_id] = session
+    return session
+
+
+def delete_session(session_id):
+    SESSIONS.pop(session_id, None)
+    with db_connect() as conn:
+        conn.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
+
+
+def update_session_id(old_session_id, new_session_id):
+    session = get_session(old_session_id)
+    if not session:
+        return None
+    delete_session(old_session_id)
+    save_session(new_session_id, session["username"], session["created_at"], session["expires_at"])
+    with db_connect() as conn:
+        conn.execute("UPDATE refresh_tokens SET session_id = ? WHERE session_id = ?", (new_session_id, old_session_id))
+    for record in REFRESH_TOKENS.values():
+        if record.get("session_id") == old_session_id:
+            record["session_id"] = new_session_id
+    return get_session(new_session_id)
+
+
+def save_refresh_token(refresh_token, username, session_id, expires_at, active=True):
+    REFRESH_TOKENS[refresh_token] = {
+        "username": username,
+        "session_id": session_id,
+        "expires_at": expires_at,
+        "active": bool(active),
+    }
+    with db_connect() as conn:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO refresh_tokens (refresh_token, username, session_id, expires_at, active)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (refresh_token, username, session_id, expires_at, 1 if active else 0),
+        )
+
+
+def get_refresh_token_record(refresh_token):
+    if refresh_token in REFRESH_TOKENS:
+        return REFRESH_TOKENS[refresh_token]
+    with db_connect() as conn:
+        row = conn.execute(
+            "SELECT username, session_id, expires_at, active FROM refresh_tokens WHERE refresh_token = ?",
+            (refresh_token,),
+        ).fetchone()
+    if not row:
+        return None
+    record = {
+        "username": row["username"],
+        "session_id": row["session_id"],
+        "expires_at": int(row["expires_at"]),
+        "active": bool(row["active"]),
+    }
+    REFRESH_TOKENS[refresh_token] = record
+    return record
+
+
+def set_refresh_token_active(refresh_token, active):
+    record = get_refresh_token_record(refresh_token)
+    if record:
+        record["active"] = bool(active)
+    with db_connect() as conn:
+        conn.execute("UPDATE refresh_tokens SET active = ? WHERE refresh_token = ?", (1 if active else 0, refresh_token))
+
+
 def local_timezone():
     if ZoneInfo:
         try:
@@ -450,7 +563,7 @@ def verify_jwt(token):
             return None, "token_not_yet_valid"
         if current >= int(payload.get("exp", 0)):
             return None, "token_expired"
-        session = SESSIONS.get(payload.get("sid"))
+        session = get_session(payload.get("sid"))
         if not session or session["username"] != payload.get("sub"):
             return None, "session_not_found"
         if current >= session["expires_at"]:
@@ -642,7 +755,7 @@ def login_tracking_report(limit=100):
 
     return {
         "description": "Authentication tracking evidence for login attempts, token validation, expired sessions/tokens, token refresh requests, and new token issuance.",
-        "retention": "in-memory; resets when the container restarts",
+        "retention": "audit events are in-memory; sessions and refresh tokens are stored in SQLite",
         "summary": summary,
         "events": selected,
     }
@@ -652,42 +765,29 @@ def issue_tokens(username):
     session_id = secrets.token_urlsafe(24)
     refresh_token = secrets.token_urlsafe(40)
     user = USERS[username]
-    SESSIONS[session_id] = {
-        "username": username,
-        "created_at": now(),
-        "expires_at": now() + SESSION_TTL_SECONDS,
-    }
-    REFRESH_TOKENS[refresh_token] = {
-        "username": username,
-        "session_id": session_id,
-        "expires_at": now() + REFRESH_TOKEN_TTL_SECONDS,
-        "active": True,
-    }
+    current = now()
+    save_session(session_id, username, current, current + SESSION_TTL_SECONDS)
+    save_refresh_token(refresh_token, username, session_id, current + REFRESH_TOKEN_TTL_SECONDS, True)
     access_token, claims = make_jwt(username, user["role"], session_id)
     return access_token, refresh_token, session_id, claims
 
 
 def rotate_refresh_token(refresh_token):
-    record = REFRESH_TOKENS.get(refresh_token)
+    record = get_refresh_token_record(refresh_token)
     if not record:
         return None, "refresh_token_not_found"
     if not record["active"]:
         return None, "refresh_token_reused"
     if now() >= record["expires_at"]:
         return None, "refresh_token_expired"
-    session = SESSIONS.get(record["session_id"])
+    session = get_session(record["session_id"])
     if not session or now() >= session["expires_at"]:
         return None, "session_expired"
 
-    record["active"] = False
+    set_refresh_token_active(refresh_token, False)
     new_refresh_token = secrets.token_urlsafe(40)
-    REFRESH_TOKENS[new_refresh_token] = {
-        "username": record["username"],
-        "session_id": record["session_id"],
-        "expires_at": now() + REFRESH_TOKEN_TTL_SECONDS,
-        "active": True,
-    }
-    session["expires_at"] = now() + SESSION_TTL_SECONDS
+    save_refresh_token(new_refresh_token, record["username"], record["session_id"], now() + REFRESH_TOKEN_TTL_SECONDS, True)
+    save_session(record["session_id"], session["username"], session["created_at"], now() + SESSION_TTL_SECONDS)
     user = USERS[record["username"]]
     access_token, claims = make_jwt(record["username"], user["role"], record["session_id"])
     return (access_token, new_refresh_token, record["session_id"], claims), None
@@ -1346,7 +1446,7 @@ class SoapDastHandler(BaseHTTPRequestHandler):
             self.send_body(401, soap_fault("Auth.InvalidCredentials", "Invalid username or password"))
             return
         access_token, refresh_token, session_id, claims = issue_tokens(username)
-        refresh_record = REFRESH_TOKENS.get(refresh_token, {})
+        refresh_record = get_refresh_token_record(refresh_token) or {}
         self.log_auth_event(
             "login",
             "success",
@@ -1398,7 +1498,7 @@ class SoapDastHandler(BaseHTTPRequestHandler):
             self.send_body(401, soap_fault("Auth.RefreshFailed", error))
             return
         access_token, new_refresh_token, session_id, claims = result
-        refresh_record = REFRESH_TOKENS.get(new_refresh_token, {})
+        refresh_record = get_refresh_token_record(new_refresh_token) or {}
         self.log_auth_event(
             "refresh_token",
             "success",
@@ -1542,9 +1642,10 @@ class SoapDastHandler(BaseHTTPRequestHandler):
             self.log_auth_event("logout", "failure", error=error)
             self.send_body(401, soap_fault("Auth.Required", error))
             return
-        session = SESSIONS.pop(payload["sid"], None)
-        if refresh_token in REFRESH_TOKENS:
-            REFRESH_TOKENS[refresh_token]["active"] = False
+        session = get_session(payload["sid"])
+        delete_session(payload["sid"])
+        if refresh_token:
+            set_refresh_token_active(refresh_token, False)
         self.log_auth_event(
             "logout",
             "success",
