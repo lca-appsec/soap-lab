@@ -195,7 +195,7 @@ In vulnerable mode, JWT signature validation is intentionally weak.
 
 ### REST: Refresh Token
 
-The access token expires after 45 seconds. The refresh token keeps the lab default validity of 15 minutes.
+The access token expires after 2 minutes. The refresh token keeps the lab default validity of 15 minutes.
 
 Use the refresh token to get another access token:
 
@@ -523,7 +523,7 @@ The authentication flow is intentionally simple:
 ```text
 Login -> Access token + Refresh token
 Use access token as Bearer token
-Access token expires after 45 seconds; refresh token remains valid for 15 minutes
+Access token expires after 2 minutes; refresh token remains valid for 15 minutes
 Use refresh token to get a new dynamic JWT
 In vulnerable mode, the same refresh token can be reused
 ```
@@ -597,7 +597,7 @@ Authentication tests:
 
 - Missing bearer token
 - Invalid JWT
-- Expired JWT after 45 seconds
+- Expired JWT after 2 minutes
 - Modified JWT payload
 - Modified JWT signature
 - `alg=none`
@@ -885,7 +885,7 @@ No modo vulneravel, a validacao de assinatura JWT e fraca de proposito.
 
 ### REST: Refresh Token
 
-O access token expira depois de 45 segundos. O refresh token mantem a validade padrao do laboratorio de 15 minutos.
+O access token expira depois de 2 minutos. O refresh token mantem a validade padrao do laboratorio de 15 minutos.
 
 Use o refresh token para pegar outro access token:
 
@@ -1213,7 +1213,7 @@ O fluxo de autenticacao e simples:
 ```text
 Login -> Access token + Refresh token
 Usa access token como Bearer token
-Access token expira depois de 45 segundos; refresh token continua valido por 15 minutos
+Access token expira depois de 2 minutos; refresh token continua valido por 15 minutos
 Usa refresh token para pegar novo JWT dinamico
 No modo vulneravel, o mesmo refresh token pode ser reutilizado
 ```
@@ -1287,7 +1287,7 @@ Testes de autenticacao:
 
 - Bearer token ausente
 - JWT invalido
-- JWT expirado depois de 45 segundos
+- JWT expirado depois de 2 minutos
 - Payload JWT alterado
 - Assinatura JWT alterada
 - `alg=none`
