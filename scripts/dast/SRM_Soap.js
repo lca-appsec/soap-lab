@@ -1,6 +1,8 @@
 var bearerToken = null;
 var refreshToken = null;
 var tokenExpiresAt = null;
+var defaultUsername = "admin_aurora";
+var defaultPassword = "adminpass1";
 
 function run() {
     if (bearerToken === null) {
@@ -14,8 +16,17 @@ function run() {
 }
 
 function authenticateWithLogin() {
-    var tokenRequest = createLoginRequest();
-    var tokenData = fetchToken(tokenRequest, "Login");
+    var username = getVariableOrDefault("testUsername", defaultUsername);
+    var password = getVariableOrDefault("testPassword", defaultPassword);
+    var tokenData = fetchToken(createLoginRequest(username, password), "Login", false);
+
+    if (tokenData === null && (username !== defaultUsername || password !== defaultPassword)) {
+        tokenData = fetchToken(createLoginRequest(defaultUsername, defaultPassword), "LoginDefaultFallback", false);
+    }
+
+    if (tokenData === null) {
+        throw "SOAP Login failed. Check loginBaseUrl, testUsername, and testPassword. Expected /soap/auth with SOAPAction Login.";
+    }
 
     bearerToken = tokenData.accessToken;
     refreshToken = tokenData.refreshToken;
@@ -31,7 +42,14 @@ function reauthenticateWithRefreshToken() {
     }
 
     var refreshRequest = createRefreshTokenRequest(refreshToken);
-    var tokenData = fetchToken(refreshRequest, "RefreshToken");
+    var tokenData = fetchToken(refreshRequest, "RefreshToken", false);
+    if (tokenData === null) {
+        bearerToken = null;
+        refreshToken = null;
+        tokenExpiresAt = null;
+        authenticateWithLogin();
+        return;
+    }
 
     bearerToken = tokenData.accessToken;
     refreshToken = tokenData.refreshToken;
@@ -40,9 +58,7 @@ function reauthenticateWithRefreshToken() {
     validateTokenIfEnabled();
 }
 
-function createLoginRequest() {
-    var username = vc.variables['testUsername'];
-    var password = vc.variables['testPassword'];
+function createLoginRequest(username, password) {
     var loginUrl = getAuthUrl();
 
     var tokenRequest = httpClient.createRequest(loginUrl);
@@ -103,7 +119,7 @@ function createValidateTokenRequest(currentAccessToken) {
     return tokenRequest;
 }
 
-function fetchToken(tokenRequest, actionName) {
+function fetchToken(tokenRequest, actionName, throwOnFailure) {
     var response = tokenRequest.send();
     var responseBody = response.asString();
 
@@ -112,11 +128,17 @@ function fetchToken(tokenRequest, actionName) {
     var expiresAt = getXmlTagValue(responseBody, "ExpiresAt");
 
     if (accessToken === null || accessToken === "") {
-        throw "SOAP " + actionName + " failed. AccessToken not found. Response: " + responseBody;
+        if (throwOnFailure === true) {
+            throw "SOAP " + actionName + " failed. AccessToken not found. Response: " + responseBody;
+        }
+        return null;
     }
 
     if (expiresAt === null || expiresAt === "") {
-        throw "SOAP " + actionName + " failed. ExpiresAt not found. Response: " + responseBody;
+        if (throwOnFailure === true) {
+            throw "SOAP " + actionName + " failed. ExpiresAt not found. Response: " + responseBody;
+        }
+        return null;
     }
 
     return {
@@ -140,6 +162,14 @@ function validateTokenIfEnabled() {
     if (subject === null || subject === "") {
         throw "SOAP ValidateToken failed. Response: " + responseBody;
     }
+}
+
+function getVariableOrDefault(name, fallback) {
+    var value = vc.variables[name];
+    if (value === null || value === undefined || trimValue(String(value)) === "") {
+        return fallback;
+    }
+    return trimValue(String(value));
 }
 
 function getXmlTagValue(xml, tagName) {
