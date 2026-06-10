@@ -11,6 +11,8 @@ IMAGE_NAME="${IMAGE_NAME:-${PROJECT_NAME}}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 IMAGE_URI="${ACR_NAME}.azurecr.io/${IMAGE_NAME}:${IMAGE_TAG}"
 IMAGE_PLATFORM="${IMAGE_PLATFORM:-linux/amd64}"
+MIN_REPLICAS="${MIN_REPLICAS:-1}"
+MAX_REPLICAS="${MAX_REPLICAS:-10}"
 
 echo "Configuration:"
 echo "  PROJECT_NAME=${PROJECT_NAME}"
@@ -20,6 +22,8 @@ echo "  CONTAINER_APP_NAME=${CONTAINER_APP_NAME}"
 echo "  ACR_NAME=${ACR_NAME}"
 echo "  IMAGE_URI=${IMAGE_URI}"
 echo "  IMAGE_PLATFORM=${IMAGE_PLATFORM}"
+echo "  MIN_REPLICAS=${MIN_REPLICAS}"
+echo "  MAX_REPLICAS=${MAX_REPLICAS}"
 
 az group create --name "${RESOURCE_GROUP}" --location "${LOCATION}" >/dev/null
 az acr create --resource-group "${RESOURCE_GROUP}" --name "${ACR_NAME}" --sku Basic >/dev/null 2>&1 || true
@@ -45,6 +49,8 @@ az containerapp create \
   --image "${IMAGE_URI}" \
   --target-port 8089 \
   --ingress external \
+  --min-replicas "${MIN_REPLICAS}" \
+  --max-replicas "${MAX_REPLICAS}" \
   --registry-server "${ACR_NAME}.azurecr.io" \
   --registry-username "${ACR_USERNAME}" \
   --registry-password "${ACR_PASSWORD}" \
@@ -55,6 +61,8 @@ VULN_FQDN="$(az containerapp show --name "${CONTAINER_APP_NAME}" --resource-grou
 az containerapp update \
   --name "${CONTAINER_APP_NAME}" \
   --resource-group "${RESOURCE_GROUP}" \
+  --min-replicas "${MIN_REPLICAS}" \
+  --max-replicas "${MAX_REPLICAS}" \
   --set-env-vars SOAP_DAST_HOST=0.0.0.0 SOAP_DAST_VULN_PORT=8089 SOAP_DAST_PUBLIC_HOST="${VULN_FQDN}" SOAP_DAST_VULN_PUBLIC_PORT=443 >/dev/null
 
 echo "Vulnerable app URL:"

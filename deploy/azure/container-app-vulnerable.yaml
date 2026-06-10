@@ -5,6 +5,9 @@ properties:
       targetPort: 8089
       transport: http
   template:
+    scale:
+      minReplicas: 1
+      maxReplicas: 10
     containers:
       - name: ca-rest-soap-labs
         image: restsoaplabs.azurecr.io/rest-soap-labs:latest

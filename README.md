@@ -665,12 +665,16 @@ export ENVIRONMENT_NAME=cae-rest-soap-labs
 export CONTAINER_APP_NAME=ca-rest-soap-labs
 export ACR_NAME=restsoaplabs
 export IMAGE_PLATFORM=linux/amd64
+export MIN_REPLICAS=1
+export MAX_REPLICAS=10
 
 chmod +x deploy/azure/create-container-apps.sh
 ./deploy/azure/create-container-apps.sh
 ```
 
 The script uses `docker buildx build --platform linux/amd64 --push` by default. This fixes Azure errors like `no child with platform linux/amd64 in index`.
+
+For DAST scans, keep `MIN_REPLICAS=1`. This keeps one Azure Container Apps replica warm and avoids cold-start delays between scan requests. Use `MIN_REPLICAS=0` only when saving cost matters more than response speed.
 
 Default Azure names:
 
@@ -1362,12 +1366,16 @@ export ENVIRONMENT_NAME=cae-rest-soap-labs
 export CONTAINER_APP_NAME=ca-rest-soap-labs
 export ACR_NAME=restsoaplabs
 export IMAGE_PLATFORM=linux/amd64
+export MIN_REPLICAS=1
+export MAX_REPLICAS=10
 
 chmod +x deploy/azure/create-container-apps.sh
 ./deploy/azure/create-container-apps.sh
 ```
 
 O script usa `docker buildx build --platform linux/amd64 --push` por padrao. Isso corrige erros da Azure como `no child with platform linux/amd64 in index`.
+
+Para scans DAST, mantenha `MIN_REPLICAS=1`. Isso deixa uma replica do Azure Container Apps sempre aquecida e evita demora de cold start entre as requisicoes do scanner. Use `MIN_REPLICAS=0` somente quando economizar custo for mais importante que velocidade de resposta.
 
 Nomes padrao na Azure:
 
