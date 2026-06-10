@@ -48,14 +48,14 @@ az containerapp create \
   --registry-server "${ACR_NAME}.azurecr.io" \
   --registry-username "${ACR_USERNAME}" \
   --registry-password "${ACR_PASSWORD}" \
-  --env-vars APP_MODE=vulnerable SOAP_DAST_HOST=0.0.0.0 SOAP_DAST_VULN_PORT=8089 SOAP_DAST_VULN_PUBLIC_PORT=443
+  --env-vars SOAP_DAST_HOST=0.0.0.0 SOAP_DAST_VULN_PORT=8089 SOAP_DAST_VULN_PUBLIC_PORT=443
 
 VULN_FQDN="$(az containerapp show --name "${CONTAINER_APP_NAME}" --resource-group "${RESOURCE_GROUP}" --query properties.configuration.ingress.fqdn -o tsv)"
 
 az containerapp update \
   --name "${CONTAINER_APP_NAME}" \
   --resource-group "${RESOURCE_GROUP}" \
-  --set-env-vars APP_MODE=vulnerable SOAP_DAST_HOST=0.0.0.0 SOAP_DAST_VULN_PORT=8089 SOAP_DAST_PUBLIC_HOST="${VULN_FQDN}" SOAP_DAST_VULN_PUBLIC_PORT=443 >/dev/null
+  --set-env-vars SOAP_DAST_HOST=0.0.0.0 SOAP_DAST_VULN_PORT=8089 SOAP_DAST_PUBLIC_HOST="${VULN_FQDN}" SOAP_DAST_VULN_PUBLIC_PORT=443 >/dev/null
 
 echo "Vulnerable app URL:"
 echo "https://${VULN_FQDN}/soap?wsdl"

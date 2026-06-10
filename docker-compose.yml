@@ -5,7 +5,6 @@ services:
     image: soap-dast-lab:latest
     container_name: soap-lab-vulnerable
     environment:
-      APP_MODE: vulnerable
       SOAP_DAST_HOST: 0.0.0.0
       SOAP_DAST_PUBLIC_HOST: 127.0.0.1
       SOAP_DAST_VULN_PORT: 8089

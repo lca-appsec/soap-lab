@@ -65,9 +65,7 @@ Run this only in environments you own or are authorized to test.
 
 ### Files
 
-- `server.py`: shared users, token helpers, XML helpers, products, and base handlers
-- `vulnerable_server.py`: vulnerable REST/JSON and SOAP/XML application
-- `run_both.py`: starts the app selected by `APP_MODE`
+- `api-server-test.py`: standalone vulnerable REST/JSON and SOAP/XML application
 - `Dockerfile`: container image
 - `docker-compose.yml`: local vulnerable app on port `8089`
 - `requests.http`: SOAP examples
@@ -764,9 +762,7 @@ Rode apenas em ambientes seus ou onde voce tem autorizacao para testar.
 
 ### Arquivos
 
-- `server.py`: usuarios, tokens, produtos, helpers XML e handlers base
-- `vulnerable_server.py`: aplicacao vulneravel REST/JSON e SOAP/XML
-- `run_both.py`: inicia o modo selecionado por `APP_MODE`
+- `api-server-test.py`: aplicacao vulneravel standalone REST/JSON e SOAP/XML
 - `Dockerfile`: imagem do container
 - `docker-compose.yml`: aplicacao vulneravel local na porta `8089`
 - `requests.http`: exemplos SOAP

@@ -1,9 +1,7 @@
 FROM python:3.12-slim
 
 WORKDIR /app
-COPY server.py /app/server.py
-COPY vulnerable_server.py /app/vulnerable_server.py
-COPY run_both.py /app/run_both.py
+COPY api-server-test.py /app/api-server-test.py
 
 EXPOSE 8089
-CMD ["python", "run_both.py"]
+CMD ["python", "api-server-test.py"]

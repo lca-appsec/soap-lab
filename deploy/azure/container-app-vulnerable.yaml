@@ -9,8 +9,6 @@ properties:
       - name: ca-rest-soap-labs
         image: restsoaplabs.azurecr.io/rest-soap-labs:latest
         env:
-          - name: APP_MODE
-            value: vulnerable
           - name: SOAP_DAST_HOST
             value: 0.0.0.0
           - name: SOAP_DAST_VULN_PORT
