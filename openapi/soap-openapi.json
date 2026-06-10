@@ -892,6 +892,16 @@
           }
         }
       }
+    },
+    "/report": {
+      "get": {
+        "summary": "Executive HTML authentication report",
+        "responses": {
+          "200": {
+            "description": "Human-readable login tracking report"
+          }
+        }
+      }
     }
   }
 }

@@ -59,6 +59,7 @@ This lab is vulnerable on purpose:
 - Weak session binding
 - Full interaction audit for HTTP/SOAP requests, responses, login, token validation, and refresh token use
 - Dedicated login tracking evidence at `/login-tracking`
+- Executive authentication report at `/report`
 
 Run this only in environments you own or are authorized to test.
 
@@ -508,6 +509,14 @@ This route shows:
 - refresh token usage
 - token validation events
 
+For a human-friendly executive view, open `/report` in a browser:
+
+```bash
+open 'http://127.0.0.1:8089/report?limit=100'
+```
+
+The report shows summary cards, a business-readable timeline, HTTP status code, source IP, `X-Forwarded-For`, user-agent, route, user, role, error, and important refresh-token notes.
+
 The evidence is stored in memory and resets when the container restarts.
 
 Expected response:
@@ -749,6 +758,7 @@ Este laboratorio e vulneravel de proposito:
 - Vinculo fraco de sessao
 - Auditoria completa de interacoes HTTP/SOAP, respostas, login, validacao de token e uso de refresh token
 - Evidencias dedicadas de login em `/login-tracking`
+- Relatorio executivo de autenticacao em `/report`
 
 Rode apenas em ambientes seus ou onde voce tem autorizacao para testar.
 
@@ -1197,6 +1207,14 @@ Essa rota mostra:
 - emissao de novo access token
 - uso do refresh token
 - eventos de validacao de token
+
+Para uma visao executiva amigavel, abra `/report` no navegador:
+
+```bash
+open 'http://127.0.0.1:8089/report?limit=100'
+```
+
+O relatorio mostra cards de resumo, linha do tempo em linguagem de negocio, HTTP status code, IP de origem, `X-Forwarded-For`, user-agent, rota, usuario, role, erro e notas importantes sobre refresh token.
 
 As evidencias ficam em memoria e sao apagadas quando o container reinicia.
 

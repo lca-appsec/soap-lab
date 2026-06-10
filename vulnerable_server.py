@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import base64
+import html
 import json
 import os
 import time
@@ -261,6 +262,7 @@ def rest_openapi_spec():
             },
             "/api/audit": {"get": {"summary": "Read HTTP/auth audit events", "responses": {"200": {"description": "Audit log"}}}},
             "/api/login-tracking": {"get": {"summary": "Read authentication tracking evidence", "responses": {"200": {"description": "Login and token tracking evidence"}}}},
+            "/report": {"get": {"summary": "Executive HTML authentication report", "responses": {"200": {"description": "Human-readable login tracking report"}}}},
         },
     }
 
@@ -392,6 +394,7 @@ def xml_openapi_spec():
             },
             "/audit": {"get": {"summary": "XML audit log", "responses": {"200": {"description": "XML audit events"}}}},
             "/login-tracking": {"get": {"summary": "XML authentication tracking evidence", "responses": {"200": {"description": "Login and token tracking evidence"}}}},
+            "/report": {"get": {"summary": "Executive HTML authentication report", "responses": {"200": {"description": "Human-readable login tracking report"}}}},
         },
     }
 
@@ -509,6 +512,7 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
                     "xss_comments": "/comments",
                     "audit": "/api/audit",
                     "login_tracking": "/api/login-tracking",
+                    "executive_report": "/report",
                 },
             )
             return
@@ -552,6 +556,9 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
         if parsed.path == "/comments":
             self.render_comments_form(parsed)
             return
+        if parsed.path == "/report":
+            self.render_login_tracking_report(parsed)
+            return
         if parsed.path == "/":
             self.send_json_api(
                 200,
@@ -586,6 +593,7 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
                     "verbs": "/verbs",
                     "audit": "/audit",
                     "login_tracking": "/login-tracking",
+                    "executive_report": "/report",
                     "vulnerabilities": [
                         "jwt_alg_none",
                         "jwt_signature_bypass",
@@ -1034,6 +1042,155 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
                 },
             ),
         )
+
+    def render_login_tracking_report(self, parsed):
+        query = parse_qs(parsed.query, keep_blank_values=True)
+        try:
+            limit = int(query.get("limit", ["100"])[0])
+        except ValueError:
+            limit = 100
+        limit = max(1, min(limit, 500))
+        report = server.login_tracking_report(limit)
+        summary = report["summary"]
+        events = report["events"]
+
+        def esc(value):
+            return html.escape("" if value is None else str(value), quote=True)
+
+        def status_class(event):
+            status = str(event.get("status", "")).lower()
+            http_status = int(event.get("http_status") or 0)
+            if status == "success" or 200 <= http_status < 300:
+                return "ok"
+            if status == "failure" or http_status >= 400:
+                return "bad"
+            return "warn"
+
+        def business_label(event):
+            name = str(event.get("event", ""))
+            labels = {
+                "vulnerable_login": "Login",
+                "vulnerable_refresh_token": "Refresh token",
+                "vulnerable_validate_token": "Token validation",
+                "vulnerable_access_token_validation": "Route access",
+                "soap_request_received": "SOAP request",
+                "response_sent": "Response",
+            }
+            return labels.get(name, name.replace("_", " ").title())
+
+        def detail_text(event):
+            details = event.get("details")
+            if not isinstance(details, dict):
+                return ""
+            interesting = []
+            for key in (
+                "duration_ms",
+                "refresh_token_source",
+                "vulnerability",
+                "refresh_rotated",
+                "access_token_ttl_seconds",
+                "refresh_token_ttl_seconds",
+            ):
+                if key in details:
+                    interesting.append(f"{key}: {details[key]}")
+            return "; ".join(interesting)
+
+        cards = [
+            ("Total events", summary["total_events"]),
+            ("Login success", summary["login_success"]),
+            ("Login failures", summary["login_failure"]),
+            ("Refresh requests", summary["refresh_token_requests"]),
+            ("Refresh failures", summary["refresh_token_failure"]),
+            ("Expired token/session", summary["expired_session_or_token_events"]),
+        ]
+        card_html = "\n".join(
+            f"<section class=\"metric\"><span>{esc(label)}</span><strong>{esc(value)}</strong></section>"
+            for label, value in cards
+        )
+        rows = []
+        for event in reversed(events):
+            css = status_class(event)
+            rows.append(
+                "<tr>"
+                f"<td><span class=\"pill {css}\">{esc(event.get('status') or event.get('http_status') or 'observed')}</span></td>"
+                f"<td>{esc(event.get('local_time'))}</td>"
+                f"<td>{esc(business_label(event))}</td>"
+                f"<td>{esc(event.get('username', ''))}</td>"
+                f"<td>{esc(event.get('role', ''))}</td>"
+                f"<td>{esc(event.get('http_status', ''))}</td>"
+                f"<td>{esc(event.get('method', ''))} {esc(event.get('path', ''))}</td>"
+                f"<td>{esc(event.get('client', ''))}</td>"
+                f"<td>{esc(event.get('x_forwarded_for', ''))}</td>"
+                f"<td class=\"ua\">{esc(event.get('user_agent', ''))}</td>"
+                f"<td>{esc(event.get('error', ''))}</td>"
+                f"<td class=\"details\">{esc(detail_text(event))}</td>"
+                "</tr>"
+            )
+        rows_html = "\n".join(rows) or "<tr><td colspan=\"12\">No authentication events have been recorded yet.</td></tr>"
+        recommendation = "Authentication activity is being captured and can be reviewed by business event, result, source IP, forwarded IP, and client user-agent."
+        if summary["login_failure"] or summary["refresh_token_failure"]:
+            recommendation = "Review failed authentication and refresh attempts first. They may indicate scanner payload issues, expired credentials, or abuse attempts."
+        generated_at = server.local_time_fields(server.now())["local_time"]
+        page = f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Authentication Executive Report</title>
+  <style>
+    :root {{ --ink:#17202a; --muted:#617080; --line:#d8dee6; --ok:#137333; --bad:#b3261e; --warn:#8a5a00; --bg:#f6f8fb; }}
+    body {{ margin:0; font-family: Arial, Helvetica, sans-serif; color:var(--ink); background:var(--bg); }}
+    header {{ background:#fff; border-bottom:1px solid var(--line); padding:24px 32px; }}
+    main {{ padding:24px 32px 40px; }}
+    h1 {{ margin:0 0 8px; font-size:28px; letter-spacing:0; }}
+    h2 {{ margin:28px 0 12px; font-size:20px; }}
+    p {{ margin:6px 0; color:var(--muted); }}
+    .metrics {{ display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:12px; margin-top:18px; }}
+    .metric {{ background:#fff; border:1px solid var(--line); border-radius:8px; padding:14px; }}
+    .metric span {{ display:block; color:var(--muted); font-size:13px; }}
+    .metric strong {{ display:block; font-size:26px; margin-top:6px; }}
+    .note {{ background:#fff; border-left:4px solid #2b6cb0; padding:14px 16px; margin:18px 0; }}
+    .toolbar {{ display:flex; gap:10px; align-items:center; margin:18px 0; flex-wrap:wrap; }}
+    .toolbar a {{ color:#0645ad; text-decoration:none; font-weight:700; }}
+    .table-wrap {{ overflow:auto; max-height:70vh; border:1px solid var(--line); }}
+    table {{ width:100%; border-collapse:collapse; background:#fff; table-layout:fixed; }}
+    th, td {{ border-bottom:1px solid var(--line); padding:10px; text-align:left; vertical-align:top; font-size:13px; overflow-wrap:anywhere; }}
+    th {{ background:#eef2f7; color:#334155; position:sticky; top:0; }}
+    .pill {{ display:inline-block; border-radius:999px; padding:4px 8px; color:#fff; font-size:12px; font-weight:700; }}
+    .pill.ok {{ background:var(--ok); }}
+    .pill.bad {{ background:var(--bad); }}
+    .pill.warn {{ background:var(--warn); }}
+    .ua, .details {{ color:#3d4b5c; font-size:12px; }}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Authentication Executive Report</h1>
+    <p>Friendly view generated from <code>/login-tracking</code>. Generated at {esc(generated_at)}.</p>
+  </header>
+  <main>
+    <section class="metrics">{card_html}</section>
+    <section class="note"><strong>Executive reading:</strong> {esc(recommendation)}</section>
+    <div class="toolbar">
+      <span>Showing the latest {esc(summary["returned_events"])} of {esc(summary["total_events"])} tracked events.</span>
+      <a href="/login-tracking?limit={limit}">Technical XML</a>
+      <a href="/api/login-tracking?limit={limit}">Technical JSON</a>
+      <a href="/report?limit=250">Show 250</a>
+    </div>
+    <h2>Event Timeline</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Result</th><th>Local time</th><th>Business event</th><th>User</th><th>Role</th><th>HTTP</th><th>Route</th><th>Client IP</th><th>X-Forwarded-For</th><th>User-Agent</th><th>Error</th><th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>{rows_html}</tbody>
+      </table>
+    </div>
+  </main>
+</body>
+</html>"""
+        self.send_html(200, page, headers={"X-Report-Source": "/login-tracking"})
 
     def render_comments_form(self, parsed):
         query = parse_qs(parsed.query, keep_blank_values=True)
