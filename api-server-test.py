@@ -990,6 +990,23 @@ class SoapDastHandler(BaseHTTPRequestHandler):
     def send_json(self, status, data, headers=None):
         self.send_body(status, xml_document("response", data), "application/xml", headers)
 
+    def send_head_only(self, status=200, content_type="application/xml", headers=None):
+        self.log_interaction_event(
+            "response_sent",
+            status=status,
+            action=getattr(self, "_soap_action", ""),
+            details={"content_type": content_type, "response_bytes": 0, "head_only": True},
+        )
+        self.send_response(status)
+        self.send_header("Content-Type", f"{content_type}; charset=utf-8")
+        self.send_header("Content-Length", "0")
+        self.send_header("X-DAST-Lab", "soap-jwt-refresh-session")
+        self.send_header("Cache-Control", "no-store")
+        if headers:
+            for key, value in headers.items():
+                self.send_header(key, value)
+        self.end_headers()
+
     def do_OPTIONS(self):
         self.send_response(204)
         self.send_header("Allow", "GET, POST, PUSH, PUT, PATCH, DELETE, OPTIONS, TRACE")
@@ -1001,8 +1018,21 @@ class SoapDastHandler(BaseHTTPRequestHandler):
     def do_TRACE(self):
         self.send_body(405, "TRACE is intentionally rejected by the lab target.\n", "text/plain")
 
+    def do_HEAD(self):
+        parsed = urlparse(self.path)
+        if parsed.path in {"/", "/health", "/soap", "/soap/auth", "/soap/refreshtoken", "/audit", "/login-tracking"}:
+            self.send_head_only(200)
+            return
+        if parsed.path == "/soap" and "wsdl" in parse_qs(parsed.query, keep_blank_values=True):
+            self.send_head_only(200)
+            return
+        self.send_head_only(404)
+
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/health":
+            self.send_json(200, {"status": "ok", "service": "api-server-test"})
+            return
         if parsed.path == "/":
             self.send_json(
                 200,
@@ -2020,6 +2050,7 @@ def rest_openapi_spec():
             "/api/audit": {"get": {"summary": "Read HTTP/auth audit events", "responses": {"200": {"description": "Audit log"}}}},
             "/api/login-tracking": {"get": {"summary": "Read authentication tracking evidence", "responses": {"200": {"description": "Login and token tracking evidence"}}}},
             "/report": {"get": {"summary": "Executive HTML authentication report", "responses": {"200": {"description": "Human-readable login tracking report"}}}},
+            "/health": {"get": {"summary": "Container health check", "responses": {"200": {"description": "Application is running"}}}},
         },
     }
 
@@ -2152,6 +2183,7 @@ def xml_openapi_spec():
             "/audit": {"get": {"summary": "XML audit log", "responses": {"200": {"description": "XML audit events"}}}},
             "/login-tracking": {"get": {"summary": "XML authentication tracking evidence", "responses": {"200": {"description": "Login and token tracking evidence"}}}},
             "/report": {"get": {"summary": "Executive HTML authentication report", "responses": {"200": {"description": "Human-readable login tracking report"}}}},
+            "/health": {"get": {"summary": "Container health check", "responses": {"200": {"description": "Application is running"}}}},
         },
     }
 
@@ -2216,8 +2248,40 @@ class VulnerableSoapDastHandler(SoapDastHandler):
         # Vulnerability: TRACE reflects request metadata/body.
         self.send_body(200, "\n".join(reflected), "message/http")
 
+    def do_HEAD(self):
+        parsed = urlparse(self.path)
+        if parsed.path in {
+            "/",
+            "/health",
+            "/swagger",
+            "/swagger/rest.json",
+            "/swagger/xml.json",
+            "/api",
+            "/api/audit",
+            "/api/login-tracking",
+            "/comments",
+            "/report",
+            "/audit",
+            "/login-tracking",
+            "/soap",
+            "/soap/auth",
+            "/soap/refreshtoken",
+        }:
+            content_type = "text/html" if parsed.path in {"/comments", "/report"} else "application/json"
+            if parsed.path in {"/audit", "/login-tracking", "/soap", "/soap/auth", "/soap/refreshtoken"}:
+                content_type = "application/xml"
+            self.send_head_only(200, content_type=content_type)
+            return
+        if parsed.path == "/soap" and "wsdl" in parse_qs(parsed.query, keep_blank_values=True):
+            self.send_head_only(200)
+            return
+        self.send_head_only(404, content_type="application/json")
+
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/health":
+            self.send_json_api(200, {"status": "ok", "service": "api-server-test"})
+            return
         if parsed.path == "/swagger":
             self.send_json_api(
                 200,
@@ -2881,9 +2945,11 @@ class VulnerableSoapDastHandler(SoapDastHandler):
                 f"<td class=\"ua\">{esc(event.get('user_agent', ''))}</td>"
                 f"<td>{esc(event.get('error', ''))}</td>"
                 f"<td class=\"details\">{esc(detail_text(event))}</td>"
+                f"<td class=\"body-preview\"><pre>{esc(event.get('request_body_preview', ''))}</pre></td>"
+                f"<td class=\"body-preview\"><pre>{esc(event.get('response_body_preview', ''))}</pre></td>"
                 "</tr>"
             )
-        rows_html = "\n".join(rows) or "<tr><td colspan=\"12\">No authentication events have been recorded yet.</td></tr>"
+        rows_html = "\n".join(rows) or "<tr><td colspan=\"14\">No authentication events have been recorded yet.</td></tr>"
         recommendation = "Authentication activity is being captured and can be reviewed by business event, result, source IP, forwarded IP, and client user-agent."
         if summary["login_failure"] or summary["refresh_token_failure"]:
             recommendation = "Review failed authentication and refresh attempts first. They may indicate scanner payload issues, expired credentials, or abuse attempts."
@@ -2917,6 +2983,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
     .pill.bad {{ background:var(--bad); }}
     .pill.warn {{ background:var(--warn); }}
     .ua, .details {{ color:#3d4b5c; font-size:12px; }}
+    .body-preview pre {{ margin:0; max-height:180px; min-width:260px; overflow:auto; white-space:pre-wrap; font-family: Consolas, Monaco, monospace; font-size:12px; line-height:1.35; color:#2d3748; }}
   </style>
 </head>
 <body>
@@ -2938,7 +3005,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
       <table>
         <thead>
           <tr>
-            <th>Result</th><th>Local time</th><th>Business event</th><th>User</th><th>Role</th><th>HTTP</th><th>Route</th><th>Client IP</th><th>X-Forwarded-For</th><th>User-Agent</th><th>Error</th><th>Notes</th>
+            <th>Result</th><th>Local time</th><th>Business event</th><th>User</th><th>Role</th><th>HTTP</th><th>Route</th><th>Client IP</th><th>X-Forwarded-For</th><th>User-Agent</th><th>Error</th><th>Notes</th><th>Request Body</th><th>Response Body</th>
           </tr>
         </thead>
         <tbody>{rows_html}</tbody>

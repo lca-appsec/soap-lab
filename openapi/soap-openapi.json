@@ -902,6 +902,16 @@
           }
         }
       }
+    },
+    "/health": {
+      "get": {
+        "summary": "Container health check",
+        "responses": {
+          "200": {
+            "description": "Application is running"
+          }
+        }
+      }
     }
   }
 }
