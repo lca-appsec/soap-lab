@@ -400,7 +400,15 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
     server_version = "VulnerableSoapDastLab/1.0"
 
     def send_json_api(self, status, data, headers=None):
-        raw = json.dumps(data, indent=2).encode("utf-8")
+        body = json.dumps(data, indent=2)
+        raw = body.encode("utf-8")
+        self.log_interaction_event(
+            "response_sent",
+            status=status,
+            action=getattr(self, "_soap_action", ""),
+            response_body=body,
+            details={"content_type": "application/json", "response_bytes": len(raw)},
+        )
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(raw)))
@@ -414,6 +422,12 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
 
     def send_html(self, status, body, headers=None):
         raw = body.encode("utf-8")
+        self.log_interaction_event(
+            "response_sent",
+            status=status,
+            response_body=body,
+            details={"content_type": "text/html", "response_bytes": len(raw)},
+        )
         self.send_response(status)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(raw)))
@@ -1258,7 +1272,28 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
     def soap_refresh_token(self, root):
         started_at = time.perf_counter()
         refresh_token = server.xml_text(root, "RefreshToken")
+        refresh_token_source = "soap_body"
+        if not refresh_token.strip():
+            wrapped_string = server.xml_text(root, "String").strip()
+            if wrapped_string:
+                refresh_token = wrapped_string
+                refresh_token_source = "wrapped_string_body"
         record = server.get_refresh_token_record(refresh_token)
+        if not record:
+            bearer = self.bearer_token()
+            if bearer:
+                payload, bearer_error = insecure_verify_jwt(bearer)
+                if payload:
+                    fallback_token, fallback_record = server.get_active_refresh_token_for_session(
+                        payload.get("sub", ""),
+                        payload.get("sid", ""),
+                    )
+                    if fallback_token and fallback_record:
+                        refresh_token = fallback_token
+                        record = fallback_record
+                        refresh_token_source = "authorization_bearer_session_fallback"
+                elif not refresh_token.strip():
+                    refresh_token_source = f"missing_body_token_bearer_{bearer_error}"
         if not record:
             self.log_auth_event(
                 "vulnerable_refresh_token",
@@ -1266,6 +1301,8 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
                 error="refresh_token_not_found",
                 details={
                     "refresh_token_fingerprint": server.token_fingerprint(refresh_token),
+                    "refresh_token_source": refresh_token_source,
+                    "body_refresh_token_present": bool(refresh_token.strip()),
                     "duration_ms": round((time.perf_counter() - started_at) * 1000, 2),
                 },
             )
@@ -1280,6 +1317,7 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
                 session_id=record.get("session_id"),
                 details={
                     "refresh_token_fingerprint": server.token_fingerprint(refresh_token),
+                    "refresh_token_source": refresh_token_source,
                     "refresh_token_expires_at": record.get("expires_at"),
                     "duration_ms": round((time.perf_counter() - started_at) * 1000, 2),
                 },
@@ -1299,6 +1337,7 @@ class VulnerableSoapDastHandler(server.SoapDastHandler):
             token_id=claims["jti"],
             details={
                 "refresh_token_fingerprint": server.token_fingerprint(refresh_token),
+                "refresh_token_source": refresh_token_source,
                 "new_access_token_fingerprint": server.token_fingerprint(access_token),
                 "new_access_token_expires_at": claims["exp"],
                 "refresh_token_expires_at": record.get("expires_at"),

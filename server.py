@@ -492,6 +492,41 @@ def get_refresh_token_record(refresh_token):
     return record
 
 
+def get_active_refresh_token_for_session(username, session_id):
+    for refresh_token, record in REFRESH_TOKENS.items():
+        if (
+            record.get("username") == username
+            and record.get("session_id") == session_id
+            and record.get("active")
+            and now() < int(record.get("expires_at", 0))
+        ):
+            return refresh_token, record
+
+    with db_connect() as conn:
+        row = conn.execute(
+            """
+            SELECT refresh_token, username, session_id, expires_at, active
+            FROM refresh_tokens
+            WHERE username = ? AND session_id = ? AND active = 1 AND expires_at > ?
+            ORDER BY expires_at DESC
+            LIMIT 1
+            """,
+            (username, session_id, now()),
+        ).fetchone()
+    if not row:
+        return None, None
+
+    record = {
+        "username": row["username"],
+        "session_id": row["session_id"],
+        "expires_at": int(row["expires_at"]),
+        "active": bool(row["active"]),
+    }
+    refresh_token = row["refresh_token"]
+    REFRESH_TOKENS[refresh_token] = record
+    return refresh_token, record
+
+
 def set_refresh_token_active(refresh_token, active):
     record = get_refresh_token_record(refresh_token)
     if record:
@@ -699,6 +734,12 @@ def login_tracking_report(limit=100):
     for entry in events[-limit:]:
         enriched = dict(entry)
         enriched.update(local_time_fields(entry.get("time")))
+        headers = enriched.get("headers")
+        if isinstance(headers, dict):
+            enriched.setdefault("user_agent", headers.get("User-Agent") or headers.get("user-agent") or "")
+            enriched.setdefault("x_forwarded_for", headers.get("X-Forwarded-For") or headers.get("x-forwarded-for") or "")
+        if "status" in enriched and isinstance(enriched.get("status"), int):
+            enriched.setdefault("http_status", enriched["status"])
         details = enriched.get("details")
         if isinstance(details, dict):
             enriched["details"] = dict(details)
@@ -830,7 +871,26 @@ class SoapDastHandler(BaseHTTPRequestHandler):
         return {
             key: fingerprint_header_value(key, value)
             for key, value in self.headers.items()
-            if key.lower() in {"authorization", "content-type", "soapaction", "user-agent", "cookie", "x-session-token"}
+            if key.lower()
+            in {
+                "authorization",
+                "content-type",
+                "soapaction",
+                "user-agent",
+                "cookie",
+                "x-session-token",
+                "x-forwarded-for",
+                "x-real-ip",
+                "forwarded",
+            }
+        }
+
+    def request_tracking_fields(self):
+        return {
+            "user_agent": self.headers.get("User-Agent", ""),
+            "x_forwarded_for": self.headers.get("X-Forwarded-For", ""),
+            "x_real_ip": self.headers.get("X-Real-IP", ""),
+            "forwarded": self.headers.get("Forwarded", ""),
         }
 
     def log_interaction_event(self, event, status=None, action=None, request_body=None, response_body=None, details=None):
@@ -843,8 +903,10 @@ class SoapDastHandler(BaseHTTPRequestHandler):
             "event": event,
             "headers": self.audit_headers(),
         }
+        entry.update(self.request_tracking_fields())
         if status is not None:
             entry["status"] = status
+            entry["http_status"] = status
         if action:
             entry["soap_action"] = action
         if request_body is not None:
@@ -866,6 +928,7 @@ class SoapDastHandler(BaseHTTPRequestHandler):
                 "method": self.command,
                 "path": self.path,
                 "message": fmt % args,
+                **self.request_tracking_fields(),
             }
         )
         super().log_message(fmt, *args)
@@ -890,6 +953,7 @@ class SoapDastHandler(BaseHTTPRequestHandler):
             "event": event,
             "status": status,
         }
+        entry.update(self.request_tracking_fields())
         optional = {
             "username": username,
             "role": role,

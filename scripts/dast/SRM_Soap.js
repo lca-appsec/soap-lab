@@ -10,6 +10,7 @@ function run() {
     }
 
     updateRequestHeaders(bearerToken);
+    updateCurrentRefreshRequestBodyIfNeeded();
 }
 
 function authenticateWithLogin() {
@@ -169,6 +170,53 @@ function isTokenExpired() {
 
 function updateRequestHeaders(token) {
     request.addHeader("Authorization", "Bearer " + token);
+}
+
+function updateCurrentRefreshRequestBodyIfNeeded() {
+    var currentUrl = getCurrentRequestUrl();
+    if (!currentUrl.match(/\/soap\/refreshtoken\/?$/i)) {
+        return;
+    }
+
+    request.addHeader("Content-Type", "application/xml");
+    request.addHeader("SOAPAction", "RefreshToken");
+    if (typeof request.setMethod === "function") {
+        request.setMethod("POST");
+    }
+    if (typeof request.setBody === "function") {
+        request.setBody(buildRefreshTokenEnvelope(refreshToken));
+    }
+}
+
+function buildRefreshTokenEnvelope(currentRefreshToken) {
+    return "<?xml version=\"1.0\"?>\r\n" +
+        "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\">\r\n" +
+        "  <soap:Body>\r\n" +
+        "    <lab:RefreshToken>\r\n" +
+        "      <lab:RefreshToken>" + currentRefreshToken + "</lab:RefreshToken>\r\n" +
+        "    </lab:RefreshToken>\r\n" +
+        "  </soap:Body>\r\n" +
+        "</soap:Envelope>";
+}
+
+function getCurrentRequestUrl() {
+    try {
+        if (typeof request.getUrl === "function") {
+            return String(request.getUrl());
+        }
+        if (typeof request.getURI === "function") {
+            return String(request.getURI());
+        }
+        if (typeof request.getUri === "function") {
+            return String(request.getUri());
+        }
+        if (request.url !== undefined) {
+            return String(request.url);
+        }
+    } catch (ignored) {
+        return "";
+    }
+    return "";
 }
 
 function getAuthUrl() {
