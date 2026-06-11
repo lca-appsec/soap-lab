@@ -13,6 +13,7 @@ function run() {
 
     updateRequestHeaders(bearerToken);
     updateCurrentRefreshRequestBodyIfNeeded();
+    updateCurrentProductRequestBodyIfNeeded();
 }
 
 function authenticateWithLogin() {
@@ -92,7 +93,7 @@ function createRefreshTokenRequest(currentRefreshToken) {
         "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\">\r\n" +
         "  <soap:Body>\r\n" +
         "    <lab:RefreshToken>\r\n" +
-        "      <lab:RefreshToken>" + currentRefreshToken + "</lab:RefreshToken>\r\n" +
+        "      <lab:RefreshToken>" + escapeXml(currentRefreshToken) + "</lab:RefreshToken>\r\n" +
         "    </lab:RefreshToken>\r\n" +
         "  </soap:Body>\r\n" +
         "</soap:Envelope>");
@@ -203,8 +204,8 @@ function updateRequestHeaders(token) {
 }
 
 function updateCurrentRefreshRequestBodyIfNeeded() {
-    var currentUrl = getCurrentRequestUrl();
-    if (!currentUrl.match(/\/soap\/refreshtoken\/?$/i)) {
+    var currentPath = getCurrentRequestPath();
+    if (!currentPath.match(/\/soap\/refreshtoken\/?$/i)) {
         return;
     }
 
@@ -218,15 +219,74 @@ function updateCurrentRefreshRequestBodyIfNeeded() {
     }
 }
 
+function updateCurrentProductRequestBodyIfNeeded() {
+    var currentPath = getCurrentRequestPath();
+    if (!currentPath.match(/\/admin\/products\/?$/i)) {
+        return;
+    }
+
+    var currentMethod = getCurrentRequestMethod();
+    if (currentMethod !== "POST" && currentMethod !== "PUSH" && currentMethod !== "DELETE") {
+        return;
+    }
+
+    request.addHeader("Content-Type", "application/xml");
+
+    if (typeof request.setBody !== "function") {
+        return;
+    }
+
+    if (currentMethod === "DELETE") {
+        request.setBody("<product><sku>SKU-10</sku></product>");
+        return;
+    }
+
+    if (currentMethod === "PUSH") {
+        request.setBody("<product><sku>SKU-10</sku><name>blabla updated</name><price>209.90</price><stock>9</stock></product>");
+        return;
+    }
+
+    request.setBody("<product><sku>SKU-10</sku><name>blabla</name><price>199.90</price><stock>10</stock></product>");
+}
+
 function buildRefreshTokenEnvelope(currentRefreshToken) {
     return "<?xml version=\"1.0\"?>\r\n" +
         "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\">\r\n" +
         "  <soap:Body>\r\n" +
         "    <lab:RefreshToken>\r\n" +
-        "      <lab:RefreshToken>" + currentRefreshToken + "</lab:RefreshToken>\r\n" +
+        "      <lab:RefreshToken>" + escapeXml(currentRefreshToken) + "</lab:RefreshToken>\r\n" +
         "    </lab:RefreshToken>\r\n" +
         "  </soap:Body>\r\n" +
         "</soap:Envelope>";
+}
+
+function getCurrentRequestPath() {
+    var currentUrl = getCurrentRequestUrl();
+    var withoutHash = currentUrl.split("#")[0];
+    var withoutQuery = withoutHash.split("?")[0];
+    var schemeIndex = withoutQuery.indexOf("://");
+    if (schemeIndex >= 0) {
+        var pathIndex = withoutQuery.indexOf("/", schemeIndex + 3);
+        if (pathIndex >= 0) {
+            return withoutQuery.substring(pathIndex);
+        }
+        return "/";
+    }
+    return withoutQuery;
+}
+
+function getCurrentRequestMethod() {
+    try {
+        if (typeof request.getMethod === "function") {
+            return String(request.getMethod()).toUpperCase();
+        }
+        if (request.method !== undefined) {
+            return String(request.method).toUpperCase();
+        }
+    } catch (ignored) {
+        return "";
+    }
+    return "";
 }
 
 function getCurrentRequestUrl() {
@@ -247,6 +307,15 @@ function getCurrentRequestUrl() {
         return "";
     }
     return "";
+}
+
+function escapeXml(value) {
+    return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&apos;");
 }
 
 function getAuthUrl() {
