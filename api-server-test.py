@@ -3471,10 +3471,11 @@ class ApiServerTestHandler(SoapDastHandler):
     .note {{ background:#fff; border-left:4px solid #2b6cb0; padding:14px 16px; margin:18px 0; }}
     .toolbar {{ display:flex; gap:10px; align-items:center; margin:18px 0; flex-wrap:wrap; }}
     .toolbar a {{ color:#0645ad; text-decoration:none; font-weight:700; }}
-    .table-wrap {{ overflow:auto; max-height:70vh; border:1px solid var(--line); }}
-    table {{ width:100%; border-collapse:collapse; background:#fff; table-layout:fixed; }}
-    th, td {{ border-bottom:1px solid var(--line); padding:10px; text-align:left; vertical-align:top; font-size:13px; overflow-wrap:anywhere; }}
+    .table-wrap {{ overflow:auto; max-height:72vh; border:1px solid var(--line); }}
+    table {{ min-width:2600px; width:max-content; border-collapse:collapse; background:#fff; table-layout:auto; }}
+    th, td {{ border-bottom:1px solid var(--line); padding:10px; text-align:left; vertical-align:top; font-size:13px; overflow-wrap:normal; }}
     th {{ background:#eef2f7; color:#334155; position:sticky; top:0; }}
+    th:nth-child(14), th:nth-child(15), td:nth-child(14), td:nth-child(15) {{ width:760px; min-width:760px; }}
     .pill {{ display:inline-block; border-radius:999px; padding:4px 8px; color:#fff; font-size:12px; font-weight:700; }}
     .pill.ok {{ background:var(--ok); }}
     .pill.bad {{ background:var(--bad); }}
@@ -3635,16 +3636,17 @@ class ApiServerTestHandler(SoapDastHandler):
     .note {{ background:#fff; border-left:4px solid #2b6cb0; padding:14px 16px; margin:18px 0; }}
     .toolbar {{ display:flex; gap:10px; align-items:center; margin:18px 0; flex-wrap:wrap; }}
     .toolbar a {{ color:#0645ad; text-decoration:none; font-weight:700; }}
-    .table-wrap {{ overflow:auto; max-height:70vh; border:1px solid var(--line); }}
-    table {{ width:100%; border-collapse:collapse; background:#fff; table-layout:fixed; }}
-    th, td {{ border-bottom:1px solid var(--line); padding:10px; text-align:left; vertical-align:top; font-size:13px; overflow-wrap:anywhere; }}
+    .table-wrap {{ overflow:auto; max-height:72vh; border:1px solid var(--line); }}
+    table {{ min-width:3000px; width:max-content; border-collapse:collapse; background:#fff; table-layout:auto; }}
+    th, td {{ border-bottom:1px solid var(--line); padding:10px; text-align:left; vertical-align:top; font-size:13px; overflow-wrap:normal; }}
     th {{ background:#eef2f7; color:#334155; position:sticky; top:0; }}
+    th:nth-child(14), th:nth-child(15), td:nth-child(14), td:nth-child(15) {{ width:900px; min-width:900px; }}
     .pill {{ display:inline-block; border-radius:999px; padding:4px 8px; color:#fff; font-size:12px; font-weight:700; }}
     .pill.ok {{ background:var(--ok); }}
     .pill.bad {{ background:var(--bad); }}
     .pill.warn {{ background:var(--warn); }}
     .ua, .details {{ color:#3d4b5c; font-size:12px; }}
-    .body-preview pre {{ margin:0; max-height:420px; min-width:360px; overflow:auto; white-space:pre-wrap; font-family: Consolas, Monaco, monospace; font-size:12px; line-height:1.35; color:#2d3748; }}
+    .body-preview pre {{ margin:0; max-height:560px; width:880px; overflow:auto; white-space:pre; font-family: Consolas, Monaco, monospace; font-size:12px; line-height:1.35; color:#2d3748; }}
   </style>
 </head>
 <body>
