@@ -205,6 +205,98 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/Product"
+              },
+              "examples": {
+                "sku-swg-001": {
+                  "summary": "Create product SKU-SWG-001",
+                  "value": {
+                    "sku": "SKU-SWG-001",
+                    "name": "Aurora Smart TV 55",
+                    "price": 2499.9,
+                    "stock": 8
+                  }
+                },
+                "sku-swg-002": {
+                  "summary": "Create product SKU-SWG-002",
+                  "value": {
+                    "sku": "SKU-SWG-002",
+                    "name": "Boreal Notebook Pro",
+                    "price": 5299.9,
+                    "stock": 5
+                  }
+                },
+                "sku-swg-003": {
+                  "summary": "Create product SKU-SWG-003",
+                  "value": {
+                    "sku": "SKU-SWG-003",
+                    "name": "Cosmos Smartphone 5G",
+                    "price": 3199.9,
+                    "stock": 12
+                  }
+                },
+                "sku-swg-004": {
+                  "summary": "Create product SKU-SWG-004",
+                  "value": {
+                    "sku": "SKU-SWG-004",
+                    "name": "Delta Wireless Headset",
+                    "price": 399.9,
+                    "stock": 20
+                  }
+                },
+                "sku-swg-005": {
+                  "summary": "Create product SKU-SWG-005",
+                  "value": {
+                    "sku": "SKU-SWG-005",
+                    "name": "Equinox Gaming Router",
+                    "price": 899.9,
+                    "stock": 7
+                  }
+                },
+                "update-sku-swg-001": {
+                  "summary": "Update price with X-HTTP-Method-Override: PUSH for SKU-SWG-001",
+                  "value": {
+                    "sku": "SKU-SWG-001",
+                    "name": "Aurora Smart TV 55",
+                    "price": 2299.9,
+                    "stock": 8
+                  }
+                },
+                "update-sku-swg-002": {
+                  "summary": "Update price with X-HTTP-Method-Override: PUSH for SKU-SWG-002",
+                  "value": {
+                    "sku": "SKU-SWG-002",
+                    "name": "Boreal Notebook Pro",
+                    "price": 4999.9,
+                    "stock": 5
+                  }
+                },
+                "update-sku-swg-003": {
+                  "summary": "Update price with X-HTTP-Method-Override: PUSH for SKU-SWG-003",
+                  "value": {
+                    "sku": "SKU-SWG-003",
+                    "name": "Cosmos Smartphone 5G",
+                    "price": 2899.9,
+                    "stock": 12
+                  }
+                },
+                "update-sku-swg-004": {
+                  "summary": "Update price with X-HTTP-Method-Override: PUSH for SKU-SWG-004",
+                  "value": {
+                    "sku": "SKU-SWG-004",
+                    "name": "Delta Wireless Headset",
+                    "price": 349.9,
+                    "stock": 20
+                  }
+                },
+                "update-sku-swg-005": {
+                  "summary": "Update price with X-HTTP-Method-Override: PUSH for SKU-SWG-005",
+                  "value": {
+                    "sku": "SKU-SWG-005",
+                    "name": "Equinox Gaming Router",
+                    "price": 799.9,
+                    "stock": 7
+                  }
+                }
               }
             }
           }
@@ -253,6 +345,53 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/Product"
+              },
+              "examples": {
+                "sku-swg-001": {
+                  "summary": "Update product price SKU-SWG-001",
+                  "value": {
+                    "sku": "SKU-SWG-001",
+                    "name": "Aurora Smart TV 55",
+                    "price": 2299.9,
+                    "stock": 8
+                  }
+                },
+                "sku-swg-002": {
+                  "summary": "Update product price SKU-SWG-002",
+                  "value": {
+                    "sku": "SKU-SWG-002",
+                    "name": "Boreal Notebook Pro",
+                    "price": 4999.9,
+                    "stock": 5
+                  }
+                },
+                "sku-swg-003": {
+                  "summary": "Update product price SKU-SWG-003",
+                  "value": {
+                    "sku": "SKU-SWG-003",
+                    "name": "Cosmos Smartphone 5G",
+                    "price": 2899.9,
+                    "stock": 12
+                  }
+                },
+                "sku-swg-004": {
+                  "summary": "Update product price SKU-SWG-004",
+                  "value": {
+                    "sku": "SKU-SWG-004",
+                    "name": "Delta Wireless Headset",
+                    "price": 349.9,
+                    "stock": 20
+                  }
+                },
+                "sku-swg-005": {
+                  "summary": "Update product price SKU-SWG-005",
+                  "value": {
+                    "sku": "SKU-SWG-005",
+                    "name": "Equinox Gaming Router",
+                    "price": 799.9,
+                    "stock": 7
+                  }
+                }
               }
             }
           }

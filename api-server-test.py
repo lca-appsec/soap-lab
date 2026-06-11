@@ -2086,6 +2086,55 @@ def ecommerce_query_parameters():
     ]
 
 
+SWAGGER_PRODUCT_CREATE_EXAMPLES = [
+    {"sku": "SKU-SWG-001", "name": "Aurora Smart TV 55", "price": 2499.90, "stock": 8},
+    {"sku": "SKU-SWG-002", "name": "Boreal Notebook Pro", "price": 5299.90, "stock": 5},
+    {"sku": "SKU-SWG-003", "name": "Cosmos Smartphone 5G", "price": 3199.90, "stock": 12},
+    {"sku": "SKU-SWG-004", "name": "Delta Wireless Headset", "price": 399.90, "stock": 20},
+    {"sku": "SKU-SWG-005", "name": "Equinox Gaming Router", "price": 899.90, "stock": 7},
+]
+
+
+SWAGGER_PRODUCT_UPDATE_EXAMPLES = [
+    {"sku": "SKU-SWG-001", "name": "Aurora Smart TV 55", "price": 2299.90, "stock": 8},
+    {"sku": "SKU-SWG-002", "name": "Boreal Notebook Pro", "price": 4999.90, "stock": 5},
+    {"sku": "SKU-SWG-003", "name": "Cosmos Smartphone 5G", "price": 2899.90, "stock": 12},
+    {"sku": "SKU-SWG-004", "name": "Delta Wireless Headset", "price": 349.90, "stock": 20},
+    {"sku": "SKU-SWG-005", "name": "Equinox Gaming Router", "price": 799.90, "stock": 7},
+]
+
+
+def named_product_examples(products, summary_prefix):
+    return {
+        product["sku"].lower(): {
+            "summary": f"{summary_prefix} {product['sku']}",
+            "value": product,
+        }
+        for product in products
+    }
+
+
+def product_xml(product):
+    return (
+        "<product>"
+        f"<sku>{product['sku']}</sku>"
+        f"<name>{product['name']}</name>"
+        f"<price>{product['price']}</price>"
+        f"<stock>{product['stock']}</stock>"
+        "</product>"
+    )
+
+
+def named_product_xml_examples(products, summary_prefix):
+    return {
+        product["sku"].lower(): {
+            "summary": f"{summary_prefix} {product['sku']}",
+            "value": product_xml(product),
+        }
+        for product in products
+    }
+
+
 def rest_openapi_spec():
     return {
         "openapi": "3.0.3",
@@ -2175,7 +2224,21 @@ def rest_openapi_spec():
                     "parameters": [{"name": "X-HTTP-Method-Override", "in": "header", "required": False, "schema": {"type": "string", "enum": ["PUSH"]}}],
                     "requestBody": {
                         "required": True,
-                        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Product"}}},
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/Product"},
+                                "examples": {
+                                    **named_product_examples(SWAGGER_PRODUCT_CREATE_EXAMPLES, "Create product"),
+                                    **{
+                                        f"update-{key}": value
+                                        for key, value in named_product_examples(
+                                            SWAGGER_PRODUCT_UPDATE_EXAMPLES,
+                                            "Update price with X-HTTP-Method-Override: PUSH for",
+                                        ).items()
+                                    },
+                                },
+                            }
+                        },
                     },
                     "responses": {"201": {"description": "Product created"}},
                 },
@@ -2192,7 +2255,12 @@ def rest_openapi_spec():
                     "security": [{"bearerAuth": []}],
                     "requestBody": {
                         "required": True,
-                        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Product"}}},
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/Product"},
+                                "examples": named_product_examples(SWAGGER_PRODUCT_UPDATE_EXAMPLES, "Update product price"),
+                            }
+                        },
                     },
                     "responses": {"200": {"description": "Product edited"}},
                 }
@@ -2334,7 +2402,34 @@ def xml_openapi_spec():
             },
             "/products": {
                 "get": {"summary": "XML product list. Admin sees prices; user sees availability only", "security": [{"bearerAuth": []}], "responses": {"200": {"description": "XML response"}}},
-                "post": {"summary": "XML admin create product. Use X-HTTP-Method-Override: PUSH as Azure-compatible edit fallback", "security": [{"bearerAuth": []}], "parameters": [{"name": "X-HTTP-Method-Override", "in": "header", "required": False, "schema": {"type": "string", "enum": ["PUSH"]}}], "responses": {"201": {"description": "XML response"}, "200": {"description": "XML edit response when override is PUSH"}, "403": {"description": "Role forbidden"}}},
+                "post": {
+                    "summary": "XML admin create product. Use X-HTTP-Method-Override: PUSH as Azure-compatible edit fallback",
+                    "security": [{"bearerAuth": []}],
+                    "parameters": [{"name": "X-HTTP-Method-Override", "in": "header", "required": False, "schema": {"type": "string", "enum": ["PUSH"]}}],
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/xml": {
+                                "schema": {"type": "string"},
+                                "examples": {
+                                    **named_product_xml_examples(SWAGGER_PRODUCT_CREATE_EXAMPLES, "Create product"),
+                                    **{
+                                        f"update-{key}": value
+                                        for key, value in named_product_xml_examples(
+                                            SWAGGER_PRODUCT_UPDATE_EXAMPLES,
+                                            "Update price with X-HTTP-Method-Override: PUSH for",
+                                        ).items()
+                                    },
+                                },
+                            },
+                            "text/xml": {
+                                "schema": {"type": "string"},
+                                "examples": named_product_xml_examples(SWAGGER_PRODUCT_CREATE_EXAMPLES, "Create product"),
+                            },
+                        },
+                    },
+                    "responses": {"201": {"description": "XML response"}, "200": {"description": "XML edit response when override is PUSH"}, "403": {"description": "Role forbidden"}},
+                },
                 "delete": {"summary": "XML admin delete product", "security": [{"bearerAuth": []}], "responses": {"200": {"description": "XML response"}, "403": {"description": "Role forbidden"}}},
             },
             "/products/eletronico": {"get": {"summary": "XML electronics catalog with SQL injection parameters", "parameters": catalog_query_parameters(), "responses": {"200": {"description": "XML catalog response"}}}},
