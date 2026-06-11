@@ -147,7 +147,7 @@
               "schema": {
                 "type": "string"
               },
-              "example": "<?xml version=\"1.0\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\"><soap:Body><lab:RefreshToken><lab:RefreshToken>YOUR_REFRESH_TOKEN</lab:RefreshToken></lab:RefreshToken></soap:Body></soap:Envelope>"
+              "example": "<?xml version=\"1.0\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\"><soap:Body><lab:RefreshToken>YOUR_REFRESH_TOKEN</lab:RefreshToken></soap:Body></soap:Envelope>"
             },
             "application/xml": {
               "schema": {

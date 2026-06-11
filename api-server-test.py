@@ -2146,7 +2146,7 @@ def xml_openapi_spec():
                         "content": {
                             "text/xml": {
                                 "schema": {"type": "string"},
-                                "example": "<?xml version=\"1.0\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\"><soap:Body><lab:RefreshToken><lab:RefreshToken>YOUR_REFRESH_TOKEN</lab:RefreshToken></lab:RefreshToken></soap:Body></soap:Envelope>",
+                                "example": "<?xml version=\"1.0\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\"><soap:Body><lab:RefreshToken>YOUR_REFRESH_TOKEN</lab:RefreshToken></soap:Body></soap:Envelope>",
                             },
                             "application/xml": {"schema": {"type": "string"}},
                         },
@@ -3260,6 +3260,19 @@ class VulnerableSoapDastHandler(SoapDastHandler):
                 refresh_token = wrapped_string
                 refresh_token_source = "wrapped_string_body"
         record = get_refresh_token_record(refresh_token)
+        if not record and refresh_token.count(".") == 2:
+            payload, body_token_error = insecure_verify_jwt(refresh_token)
+            if payload:
+                fallback_token, fallback_record = get_active_refresh_token_for_session(
+                    payload.get("sub", ""),
+                    payload.get("sid", ""),
+                )
+                if fallback_token and fallback_record:
+                    refresh_token = fallback_token
+                    record = fallback_record
+                    refresh_token_source = "access_token_in_refresh_body_fallback"
+            else:
+                refresh_token_source = f"invalid_body_jwt_{body_token_error}"
         if not record:
             bearer = self.bearer_token()
             if bearer:
@@ -3275,6 +3288,18 @@ class VulnerableSoapDastHandler(SoapDastHandler):
                         refresh_token_source = "authorization_bearer_session_fallback"
                 elif not refresh_token.strip():
                     refresh_token_source = f"missing_body_token_bearer_{bearer_error}"
+        if not record:
+            session_id = self.session_cookie()
+            session = get_session(session_id) if session_id else None
+            if session:
+                fallback_token, fallback_record = get_active_refresh_token_for_session(
+                    session.get("username", ""),
+                    session_id,
+                )
+                if fallback_token and fallback_record:
+                    refresh_token = fallback_token
+                    record = fallback_record
+                    refresh_token_source = "session_cookie_fallback"
         if not record:
             self.log_auth_event(
                 "vulnerable_refresh_token",

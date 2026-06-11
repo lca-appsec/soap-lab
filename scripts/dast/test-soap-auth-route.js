@@ -39,9 +39,7 @@ function refreshEnvelope(refreshToken) {
   return `<?xml version="1.0"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:lab="urn:soap-dast-lab">
   <soap:Body>
-    <lab:RefreshToken>
-      <lab:RefreshToken>${refreshToken}</lab:RefreshToken>
-    </lab:RefreshToken>
+    <lab:RefreshToken>${refreshToken}</lab:RefreshToken>
   </soap:Body>
 </soap:Envelope>`;
 }

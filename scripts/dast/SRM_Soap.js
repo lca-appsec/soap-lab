@@ -262,14 +262,12 @@ function updateCurrentProductRequestBodyIfNeeded() {
 function buildRefreshTokenEnvelope(currentRefreshToken) {
     var tokenElement = "";
     if (currentRefreshToken !== null && currentRefreshToken !== "") {
-        tokenElement = "      <lab:RefreshToken>" + escapeXml(currentRefreshToken) + "</lab:RefreshToken>\r\n";
+        tokenElement = escapeXml(currentRefreshToken);
     }
     return "<?xml version=\"1.0\"?>\r\n" +
         "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\">\r\n" +
         "  <soap:Body>\r\n" +
-        "    <lab:RefreshToken>\r\n" +
-        tokenElement +
-        "    </lab:RefreshToken>\r\n" +
+        "    <lab:RefreshToken>" + tokenElement + "</lab:RefreshToken>\r\n" +
         "  </soap:Body>\r\n" +
         "</soap:Envelope>";
 }

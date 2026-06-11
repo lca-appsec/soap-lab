@@ -394,9 +394,7 @@ curl -s -X POST 'http://127.0.0.1:8089/soap/refreshtoken' \
   --data-binary '<?xml version="1.0"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:lab="urn:soap-dast-lab">
   <soap:Body>
-    <lab:RefreshToken>
-      <lab:RefreshToken>YOUR_REFRESH_TOKEN</lab:RefreshToken>
-    </lab:RefreshToken>
+    <lab:RefreshToken>YOUR_REFRESH_TOKEN</lab:RefreshToken>
   </soap:Body>
 </soap:Envelope>'
 ```
@@ -1095,9 +1093,7 @@ curl -s -X POST 'http://127.0.0.1:8089/soap/refreshtoken' \
   --data-binary '<?xml version="1.0"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:lab="urn:soap-dast-lab">
   <soap:Body>
-    <lab:RefreshToken>
-      <lab:RefreshToken>YOUR_REFRESH_TOKEN</lab:RefreshToken>
-    </lab:RefreshToken>
+    <lab:RefreshToken>YOUR_REFRESH_TOKEN</lab:RefreshToken>
   </soap:Body>
 </soap:Envelope>'
 ```
