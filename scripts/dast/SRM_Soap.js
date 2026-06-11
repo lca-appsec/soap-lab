@@ -3,10 +3,6 @@ var refreshToken = null;
 var tokenExpiresAt = null;
 var defaultUsername = "admin_aurora";
 var defaultPassword = "adminpass1";
-var productWorkflowStep = 0;
-var productWorkflowCycle = 1;
-var activeProductSku = "";
-var usePostOverrideForPush = true;
 
 function run() {
     if (bearerToken === null) {
@@ -21,7 +17,6 @@ function run() {
 
     updateRequestHeaders(bearerToken);
     updateCurrentRefreshRequestBodyIfNeeded();
-    updateCurrentProductRequestBodyIfNeeded();
 }
 
 function authenticateWithLogin() {
@@ -232,89 +227,6 @@ function updateCurrentRefreshRequestBodyIfNeeded() {
     if (typeof request.setBody === "function") {
         request.setBody(buildRefreshTokenEnvelope(normalizeRefreshTokenValue(refreshToken)));
     }
-}
-
-function updateCurrentProductRequestBodyIfNeeded() {
-    var currentPath = getCurrentRequestPath();
-    if (!currentPath.match(/\/products\/?$/i) || currentPath.match(/\/api\/products\/?$/i)) {
-        return;
-    }
-
-    var currentMethod = getCurrentRequestMethod();
-    if (typeof request.setMethod === "function") {
-        var workflowAction = nextProductWorkflowAction();
-        if (workflowAction === "PUSH" && shouldUsePostOverrideForPush()) {
-            request.setMethod("POST");
-            request.addHeader("X-HTTP-Method-Override", "PUSH");
-            currentMethod = "PUSH";
-        } else {
-            request.setMethod(workflowAction);
-            currentMethod = workflowAction;
-        }
-    } else if (currentMethod !== "POST" && currentMethod !== "PUSH" && currentMethod !== "DELETE") {
-        return;
-    }
-
-    request.addHeader("Content-Type", "application/xml");
-    request.addHeader("X-SRM-Product-Workflow", currentMethod);
-
-    if (typeof request.setBody !== "function") {
-        return;
-    }
-
-    if (currentMethod === "DELETE") {
-        request.setBody(buildProductDeleteBody(activeProductSku));
-        completeProductWorkflowCycle();
-        return;
-    }
-
-    if (currentMethod === "PUSH") {
-        request.setBody(buildProductPushBody(activeProductSku));
-        return;
-    }
-
-    request.setBody(buildProductPostBody(activeProductSku));
-}
-
-function nextProductWorkflowAction() {
-    if (productWorkflowStep === 0) {
-        activeProductSku = "SKU-SRM-" + productWorkflowCycle;
-        productWorkflowStep = 1;
-        return "POST";
-    }
-
-    if (productWorkflowStep === 1) {
-        productWorkflowStep = 2;
-        return "PUSH";
-    }
-
-    productWorkflowStep = 0;
-    return "DELETE";
-}
-
-function completeProductWorkflowCycle() {
-    productWorkflowCycle = productWorkflowCycle + 1;
-    activeProductSku = "";
-}
-
-function buildProductPostBody(sku) {
-    return "<product><sku>" + escapeXml(sku) + "</sku><name>SRM workflow product</name><price>199.90</price><stock>10</stock></product>";
-}
-
-function buildProductPushBody(sku) {
-    return "<product><sku>" + escapeXml(sku) + "</sku><name>SRM workflow product updated</name><price>209.90</price><stock>9</stock></product>";
-}
-
-function buildProductDeleteBody(sku) {
-    return "<product><sku>" + escapeXml(sku) + "</sku></product>";
-}
-
-function shouldUsePostOverrideForPush() {
-    var configured = vc.variables['usePostOverrideForPush'];
-    if (configured === null || configured === undefined || trimValue(String(configured)) === "") {
-        return usePostOverrideForPush;
-    }
-    return trimValue(String(configured)).toLowerCase() !== "false";
 }
 
 function buildRefreshTokenEnvelope(currentRefreshToken) {
