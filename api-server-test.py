@@ -516,6 +516,16 @@ def get_refresh_token_record(refresh_token):
             (refresh_token,),
         ).fetchone()
     if not row:
+        portable_record = verify_portable_refresh_token(refresh_token)
+        if portable_record:
+            REFRESH_TOKENS[refresh_token] = portable_record
+            save_session(
+                portable_record["session_id"],
+                portable_record["username"],
+                now(),
+                max(now() + SESSION_TTL_SECONDS, int(portable_record["expires_at"])),
+            )
+            return portable_record
         return None
     record = {
         "username": row["username"],
@@ -598,6 +608,13 @@ def token_fingerprint(token):
     return hashlib.sha256(token.encode()).hexdigest()[:16]
 
 
+def normalize_supplied_refresh_token(value):
+    token = (value or "").strip()
+    if token.upper() in {"[REDACTED]", "REDACTED", "NULL", "UNDEFINED", "YOUR_REFRESH_TOKEN"}:
+        return ""
+    return token
+
+
 def make_jwt(username, role, session_id):
     issued_at = now()
     header = {"typ": "JWT", "alg": "HS256"}
@@ -616,6 +633,49 @@ def make_jwt(username, role, session_id):
     signing_input = f"{header_part}.{payload_part}".encode()
     signature = hmac.new(JWT_SECRET.encode(), signing_input, hashlib.sha256).digest()
     return f"{header_part}.{payload_part}.{b64url_encode(signature)}", payload
+
+
+def make_refresh_token(username, session_id, expires_at):
+    payload = {
+        "typ": "refresh",
+        "iss": JWT_ISSUER,
+        "sub": username,
+        "sid": session_id,
+        "exp": int(expires_at),
+        "jti": str(uuid.uuid4()),
+    }
+    payload_part = b64url_encode(json.dumps(payload, separators=(",", ":")).encode())
+    signature = hmac.new(JWT_SECRET.encode(), payload_part.encode(), hashlib.sha256).digest()
+    return f"rt.{payload_part}.{b64url_encode(signature)}"
+
+
+def verify_portable_refresh_token(refresh_token):
+    try:
+        prefix, payload_part, signature_part = refresh_token.split(".")
+        if prefix != "rt":
+            return None
+        expected = hmac.new(JWT_SECRET.encode(), payload_part.encode(), hashlib.sha256).digest()
+        supplied = b64url_decode(signature_part)
+        if not hmac.compare_digest(expected, supplied):
+            return None
+        payload = json.loads(b64url_decode(payload_part))
+        if payload.get("iss") != JWT_ISSUER or payload.get("typ") != "refresh":
+            return None
+        if now() >= int(payload.get("exp", 0)):
+            return None
+        username = payload.get("sub", "")
+        session_id = payload.get("sid", "")
+        if username not in USERS or not session_id:
+            return None
+        return {
+            "username": username,
+            "session_id": session_id,
+            "expires_at": int(payload["exp"]),
+            "active": True,
+            "portable": True,
+        }
+    except Exception:
+        return None
 
 
 def verify_jwt(token):
@@ -887,11 +947,12 @@ def login_tracking_report(limit=100):
 
 def issue_tokens(username):
     session_id = secrets.token_urlsafe(24)
-    refresh_token = secrets.token_urlsafe(40)
     user = USERS[username]
     current = now()
+    refresh_expires_at = current + REFRESH_TOKEN_TTL_SECONDS
+    refresh_token = make_refresh_token(username, session_id, refresh_expires_at)
     save_session(session_id, username, current, current + SESSION_TTL_SECONDS)
-    save_refresh_token(refresh_token, username, session_id, current + REFRESH_TOKEN_TTL_SECONDS, True)
+    save_refresh_token(refresh_token, username, session_id, refresh_expires_at, True)
     access_token, claims = make_jwt(username, user["role"], session_id)
     return access_token, refresh_token, session_id, claims
 
@@ -909,8 +970,9 @@ def rotate_refresh_token(refresh_token):
         return None, "session_expired"
 
     set_refresh_token_active(refresh_token, False)
-    new_refresh_token = secrets.token_urlsafe(40)
-    save_refresh_token(new_refresh_token, record["username"], record["session_id"], now() + REFRESH_TOKEN_TTL_SECONDS, True)
+    refresh_expires_at = now() + REFRESH_TOKEN_TTL_SECONDS
+    new_refresh_token = make_refresh_token(record["username"], record["session_id"], refresh_expires_at)
+    save_refresh_token(new_refresh_token, record["username"], record["session_id"], refresh_expires_at, True)
     save_session(record["session_id"], session["username"], session["created_at"], now() + SESSION_TTL_SECONDS)
     user = USERS[record["username"]]
     access_token, claims = make_jwt(record["username"], user["role"], record["session_id"])
@@ -1130,9 +1192,8 @@ class SoapDastHandler(BaseHTTPRequestHandler):
                     "wsdl": "/soap?wsdl",
                     "verbs": "/verbs",
                     "admin": "/admin",
-                    "admin_products": "/admin/products",
                     "user": "/user",
-                    "user_products": "/user/products",
+                    "products": "/products",
                     "audit": "/audit",
                     "login_tracking": "/login-tracking",
                 },
@@ -1202,49 +1263,40 @@ class SoapDastHandler(BaseHTTPRequestHandler):
         if parsed.path == "/verbs":
             self.send_json(200, self.verb_payload("GET"))
             return
-        if parsed.path in {"/admin", "/admin/products"}:
+        if parsed.path == "/admin":
             self.handle_admin_get()
             return
-        if parsed.path in {"/user", "/user/products"}:
+        if parsed.path == "/user":
             self.handle_user_get()
+            return
+        if parsed.path == "/products":
+            self.handle_products_get()
             return
         self.send_json(404, {"error": "not_found"})
 
     def do_PUT(self):
-        if urlparse(self.path).path == "/admin/products":
+        if urlparse(self.path).path == "/products":
             self.handle_product_edit()
-            return
-        if urlparse(self.path).path == "/user/products":
-            self.handle_user_write_forbidden("PUT")
             return
         self.handle_verb_probe("PUT")
 
     def do_PATCH(self):
-        if urlparse(self.path).path == "/admin/products":
+        if urlparse(self.path).path == "/products":
             self.handle_product_edit()
-            return
-        if urlparse(self.path).path == "/user/products":
-            self.handle_user_write_forbidden("PATCH")
             return
         self.handle_verb_probe("PATCH")
 
     def do_PUSH(self):
         parsed = urlparse(self.path)
-        if parsed.path == "/admin/products":
+        if parsed.path == "/products":
             self.handle_product_edit()
-            return
-        if parsed.path == "/user/products":
-            self.handle_user_write_forbidden("PUSH")
             return
         self.send_json(404, {"error": "not_found"})
 
     def do_DELETE(self):
         parsed = urlparse(self.path)
-        if parsed.path == "/admin/products":
+        if parsed.path == "/products":
             self.handle_product_delete(parsed)
-            return
-        if parsed.path == "/user/products":
-            self.handle_user_write_forbidden("DELETE")
             return
         self.handle_verb_probe("DELETE")
 
@@ -1295,10 +1347,8 @@ class SoapDastHandler(BaseHTTPRequestHandler):
             200,
             {
                 "path": "/admin",
-                "authenticated_as": payload["sub"],
-                "role": payload["role"],
-                "capabilities": ["GET list", "POST create", "PUSH edit", "DELETE delete"],
-                "products": self.products_for_admin(),
+                "account": account_summary(payload),
+                "capabilities": ["GET /products", "POST /products", "PUSH /products", "DELETE /products"],
             },
         )
 
@@ -1312,10 +1362,27 @@ class SoapDastHandler(BaseHTTPRequestHandler):
             200,
             {
                 "path": "/user",
-                "authenticated_as": payload["sub"],
-                "role": payload["role"],
-                "catalog": self.products_for_user(),
+                "account": account_summary(payload),
                 "message": "User role can only use GET. Prices and write operations are hidden.",
+            },
+        )
+
+    def handle_products_get(self):
+        payload, error = self.require_auth()
+        if error:
+            self.send_json(401, {"error": error})
+            return
+        if payload.get("role") == "admin":
+            products = self.products_for_admin()
+        else:
+            products = self.products_for_user()
+        self.send_json(
+            200,
+            {
+                "path": "/products",
+                "authenticated_as": payload.get("sub"),
+                "role": payload.get("role"),
+                "products": products,
             },
         )
 
@@ -1348,8 +1415,8 @@ class SoapDastHandler(BaseHTTPRequestHandler):
                 403,
                 {
                     "error": "wrong_path",
-                    "message": f"Admins can use {method} on /admin/products.",
-                    "allowed_path": "/admin/products",
+                    "message": f"Admins can use {method} on /products.",
+                    "allowed_path": "/products",
                 },
             )
             return
@@ -1400,7 +1467,7 @@ class SoapDastHandler(BaseHTTPRequestHandler):
         self.send_json(
             201,
             {
-                "path": "/admin/products",
+                "path": "/products",
                 "method": "POST",
                 "created_by": payload["sub"],
                 "product": {"sku": sku, **PRODUCTS[sku]},
@@ -1456,7 +1523,7 @@ class SoapDastHandler(BaseHTTPRequestHandler):
         self.send_json(
             200,
             {
-                "path": "/admin/products",
+                "path": "/products",
                 "method": self.command,
                 "updated_by": payload["sub"],
                 "before": before,
@@ -1486,7 +1553,7 @@ class SoapDastHandler(BaseHTTPRequestHandler):
         self.send_json(
             200,
             {
-                "path": "/admin/products",
+                "path": "/products",
                 "method": "DELETE",
                 "deleted_by": payload["sub"],
                 "deleted": {"sku": sku, **deleted},
@@ -1503,11 +1570,12 @@ class SoapDastHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
-        if parsed.path == "/admin/products":
+        if parsed.path == "/products":
+            override_method = self.headers.get("X-HTTP-Method-Override", "").upper()
+            if override_method == "PUSH":
+                self.handle_product_edit()
+                return
             self.handle_product_create()
-            return
-        if parsed.path == "/user/products":
-            self.handle_user_write_forbidden("POST")
             return
         if parsed.path not in {"/soap", "/soap/auth", "/soap/refreshtoken"}:
             self.send_json(404, {"error": "not_found"})
@@ -1950,6 +2018,20 @@ def product_for_user(sku, product):
     return {"sku": sku, "name": product["name"], "available": product["stock"] > 0}
 
 
+def account_summary(payload):
+    username = payload.get("sub", "")
+    user = USERS.get(username, {})
+    return {
+        "username": username,
+        "role": payload.get("role", ""),
+        "account_id": user.get("account_id", ""),
+        "balance": user.get("balance", 0),
+        "session_id": payload.get("sid", ""),
+        "token_id": payload.get("jti", ""),
+        "token_expires_at": payload.get("exp", 0),
+    }
+
+
 def category_slug_from_path(path, prefix):
     if not path.startswith(prefix):
         return ""
@@ -2067,15 +2149,30 @@ def rest_openapi_spec():
                     "responses": {"200": {"description": "Token accepted"}, "401": {"description": "Token rejected"}},
                 }
             },
-            "/api/admin/products": {
+            "/api/admin": {
                 "get": {
-                    "summary": "Admin list products with prices",
+                    "summary": "Admin authenticated account data",
                     "security": [{"bearerAuth": []}],
-                    "responses": {"200": {"description": "Product list"}, "403": {"description": "Role forbidden"}},
+                    "responses": {"200": {"description": "Admin account data"}, "403": {"description": "Role forbidden"}},
+                }
+            },
+            "/api/user": {
+                "get": {
+                    "summary": "User authenticated account data",
+                    "security": [{"bearerAuth": []}],
+                    "responses": {"200": {"description": "User account data"}, "403": {"description": "Role forbidden"}},
+                }
+            },
+            "/api/products": {
+                "get": {
+                    "summary": "List products. Admin sees prices; user sees availability only",
+                    "security": [{"bearerAuth": []}],
+                    "responses": {"200": {"description": "Product list"}},
                 },
                 "post": {
-                    "summary": "Admin create product",
+                    "summary": "Admin create product. Use X-HTTP-Method-Override: PUSH as Azure-compatible edit fallback",
                     "security": [{"bearerAuth": []}],
+                    "parameters": [{"name": "X-HTTP-Method-Override", "in": "header", "required": False, "schema": {"type": "string", "enum": ["PUSH"]}}],
                     "requestBody": {
                         "required": True,
                         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Product"}}},
@@ -2089,7 +2186,7 @@ def rest_openapi_spec():
                     "responses": {"200": {"description": "Product deleted"}},
                 },
             },
-            "/api/admin/products/push": {
+            "/api/products/push": {
                 "post": {
                     "summary": "Swagger-friendly alias for custom HTTP PUSH edit",
                     "security": [{"bearerAuth": []}],
@@ -2099,18 +2196,6 @@ def rest_openapi_spec():
                     },
                     "responses": {"200": {"description": "Product edited"}},
                 }
-            },
-            "/api/user/products": {
-                "get": {
-                    "summary": "User list products without prices",
-                    "security": [{"bearerAuth": []}],
-                    "responses": {"200": {"description": "Catalog list"}},
-                },
-                "post": {
-                    "summary": "User write attempt, expected to return 403",
-                    "security": [{"bearerAuth": []}],
-                    "responses": {"403": {"description": "Users can only GET"}},
-                },
             },
             "/api/products/eletronico": {"get": {"summary": "Fuzzable electronics catalog with SQL injection parameters", "parameters": catalog_query_parameters(), "responses": {"200": {"description": "Electronics product list"}}}},
             "/api/products/smarphone": {"get": {"summary": "Fuzzable smarphone catalog with SQL injection parameters", "parameters": catalog_query_parameters(), "responses": {"200": {"description": "Smarphone product list"}}}},
@@ -2241,13 +2326,16 @@ def xml_openapi_spec():
                     "responses": {"200": {"description": "SOAP refresh XML response"}, "400": {"description": "Unsupported refresh action"}, "401": {"description": "SOAP auth fault"}},
                 }
             },
-            "/admin/products": {
-                "get": {"summary": "XML admin product list", "security": [{"bearerAuth": []}], "responses": {"200": {"description": "XML response"}}},
-                "post": {"summary": "XML admin create product", "security": [{"bearerAuth": []}], "responses": {"201": {"description": "XML response"}}},
-                "delete": {"summary": "XML admin delete product", "security": [{"bearerAuth": []}], "responses": {"200": {"description": "XML response"}}},
+            "/admin": {
+                "get": {"summary": "XML admin authenticated account data", "security": [{"bearerAuth": []}], "responses": {"200": {"description": "XML response"}, "403": {"description": "Role forbidden"}}}
             },
-            "/user/products": {
-                "get": {"summary": "XML user product list", "security": [{"bearerAuth": []}], "responses": {"200": {"description": "XML response"}}}
+            "/user": {
+                "get": {"summary": "XML user authenticated account data", "security": [{"bearerAuth": []}], "responses": {"200": {"description": "XML response"}, "403": {"description": "Role forbidden"}}}
+            },
+            "/products": {
+                "get": {"summary": "XML product list. Admin sees prices; user sees availability only", "security": [{"bearerAuth": []}], "responses": {"200": {"description": "XML response"}}},
+                "post": {"summary": "XML admin create product. Use X-HTTP-Method-Override: PUSH as Azure-compatible edit fallback", "security": [{"bearerAuth": []}], "parameters": [{"name": "X-HTTP-Method-Override", "in": "header", "required": False, "schema": {"type": "string", "enum": ["PUSH"]}}], "responses": {"201": {"description": "XML response"}, "200": {"description": "XML edit response when override is PUSH"}, "403": {"description": "Role forbidden"}}},
+                "delete": {"summary": "XML admin delete product", "security": [{"bearerAuth": []}], "responses": {"200": {"description": "XML response"}, "403": {"description": "Role forbidden"}}},
             },
             "/products/eletronico": {"get": {"summary": "XML electronics catalog with SQL injection parameters", "parameters": catalog_query_parameters(), "responses": {"200": {"description": "XML catalog response"}}}},
             "/products/smarphone": {"get": {"summary": "XML smarphone catalog with SQL injection parameters", "parameters": catalog_query_parameters(), "responses": {"200": {"description": "XML catalog response"}}}},
@@ -2344,18 +2432,24 @@ class VulnerableSoapDastHandler(SoapDastHandler):
             "/swagger/rest.json",
             "/swagger/xml.json",
             "/api",
+            "/api/admin",
+            "/api/user",
+            "/api/products",
             "/api/audit",
             "/api/login-tracking",
             "/comments",
             "/report",
             "/audit",
             "/login-tracking",
+            "/admin",
+            "/user",
+            "/products",
             "/soap",
             "/soap/auth",
             "/soap/refreshtoken",
         }:
             content_type = "text/html" if parsed.path in {"/comments", "/report"} else "application/json"
-            if parsed.path in {"/audit", "/login-tracking", "/soap", "/soap/auth", "/soap/refreshtoken"}:
+            if parsed.path in {"/audit", "/login-tracking", "/admin", "/user", "/products", "/soap", "/soap/auth", "/soap/refreshtoken"}:
                 content_type = "application/xml"
             self.send_head_only(200, content_type=content_type)
             return
@@ -2397,8 +2491,9 @@ class VulnerableSoapDastHandler(SoapDastHandler):
                     "login": "/api/login",
                     "refresh": "/api/refresh",
                     "validate": "/api/validate",
-                    "admin_products": "/api/admin/products",
-                    "user_products": "/api/user/products",
+                    "admin": "/api/admin",
+                    "user": "/api/user",
+                    "products": "/api/products",
                     "fuzzing_products": [
                         "/api/products/eletronico",
                         "/api/products/smarphone",
@@ -2439,11 +2534,14 @@ class VulnerableSoapDastHandler(SoapDastHandler):
         if parsed.path == "/api/validate":
             self.rest_validate_token()
             return
-        if parsed.path == "/api/admin/products":
-            self.rest_admin_products_list()
+        if parsed.path == "/api/admin":
+            self.rest_admin_account()
             return
-        if parsed.path == "/api/user/products":
-            self.rest_user_products_list()
+        if parsed.path == "/api/user":
+            self.rest_user_account()
+            return
+        if parsed.path == "/api/products":
+            self.rest_products_list()
             return
         category = category_slug_from_path(parsed.path, "/api/products/")
         if category:
@@ -2529,14 +2627,15 @@ class VulnerableSoapDastHandler(SoapDastHandler):
         if parsed.path == "/api/refresh":
             self.rest_refresh_token()
             return
-        if parsed.path == "/api/admin/products":
+        if parsed.path == "/api/products":
+            override_method = self.headers.get("X-HTTP-Method-Override", "").upper()
+            if override_method == "PUSH":
+                self.rest_admin_product_edit()
+                return
             self.rest_admin_product_create()
             return
-        if parsed.path == "/api/admin/products/push":
+        if parsed.path == "/api/products/push":
             self.rest_admin_product_edit()
-            return
-        if parsed.path == "/api/user/products":
-            self.rest_user_write_forbidden("POST")
             return
         if parsed.path == "/comments":
             self.submit_comment()
@@ -2664,21 +2763,15 @@ class VulnerableSoapDastHandler(SoapDastHandler):
 
     def do_PUSH(self):
         parsed = urlparse(self.path)
-        if parsed.path == "/api/admin/products":
+        if parsed.path == "/api/products":
             self.rest_admin_product_edit()
-            return
-        if parsed.path == "/api/user/products":
-            self.rest_user_write_forbidden("PUSH")
             return
         super().do_PUSH()
 
     def do_DELETE(self):
         parsed = urlparse(self.path)
-        if parsed.path == "/api/admin/products":
+        if parsed.path == "/api/products":
             self.rest_admin_product_delete(parsed)
-            return
-        if parsed.path == "/api/user/products":
-            self.rest_user_write_forbidden("DELETE")
             return
         super().do_DELETE()
 
@@ -2833,7 +2926,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
             },
         )
 
-    def rest_admin_products_list(self):
+    def rest_admin_account(self):
         payload, status, error = self.require_rest_role("admin")
         if error:
             self.send_json_api(status, error)
@@ -2841,13 +2934,13 @@ class VulnerableSoapDastHandler(SoapDastHandler):
         self.send_json_api(
             200,
             {
-                "path": "/api/admin/products",
-                "authenticatedAs": payload.get("sub"),
-                "products": [product_for_admin(sku, product) for sku, product in PRODUCTS.items()],
+                "path": "/api/admin",
+                "account": account_summary(payload),
+                "capabilities": ["GET /api/products", "POST /api/products", "PUSH /api/products", "DELETE /api/products"],
             },
         )
 
-    def rest_user_products_list(self):
+    def rest_user_account(self):
         payload, status, error = self.require_rest_role("user")
         if error:
             self.send_json_api(status, error)
@@ -2855,9 +2948,29 @@ class VulnerableSoapDastHandler(SoapDastHandler):
         self.send_json_api(
             200,
             {
-                "path": "/api/user/products",
+                "path": "/api/user",
+                "account": account_summary(payload),
+                "message": "User role can only use GET /api/products. Prices and write operations are hidden.",
+            },
+        )
+
+    def rest_products_list(self):
+        payload, error = self.require_auth()
+        if error:
+            self.send_json_api(401, {"error": error})
+            return
+        products = (
+            [product_for_admin(sku, product) for sku, product in PRODUCTS.items()]
+            if payload.get("role") == "admin"
+            else [product_for_user(sku, product) for sku, product in PRODUCTS.items()]
+        )
+        self.send_json_api(
+            200,
+            {
+                "path": "/api/products",
                 "authenticatedAs": payload.get("sub"),
-                "catalog": [product_for_user(sku, product) for sku, product in PRODUCTS.items()],
+                "role": payload.get("role"),
+                "products": products,
             },
         )
 
@@ -3345,13 +3458,15 @@ class VulnerableSoapDastHandler(SoapDastHandler):
 
     def soap_refresh_token(self, root):
         started_at = time.perf_counter()
-        refresh_token = xml_text(root, "RefreshToken")
+        refresh_token = normalize_supplied_refresh_token(xml_text(root, "RefreshToken"))
         refresh_token_source = "soap_body"
         if not refresh_token.strip():
-            wrapped_string = xml_text(root, "String").strip()
+            wrapped_string = normalize_supplied_refresh_token(xml_text(root, "String"))
             if wrapped_string:
                 refresh_token = wrapped_string
                 refresh_token_source = "wrapped_string_body"
+            else:
+                refresh_token_source = "missing_or_redacted_soap_body"
         record = get_refresh_token_record(refresh_token)
         if not record and refresh_token.count(".") == 2:
             payload, body_token_error = insecure_verify_jwt(refresh_token)

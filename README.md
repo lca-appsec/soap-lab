@@ -180,7 +180,7 @@ The access token is a dynamic JWT. Each login creates a new `jti`, `iat`, and `e
 Use the `accessToken` in the `Authorization` header:
 
 ```bash
-curl -s 'http://127.0.0.1:8089/api/admin/products' \
+curl -s 'http://127.0.0.1:8089/api/products' \
   -H 'Authorization: Bearer YOUR_ACCESS_TOKEN'
 ```
 
@@ -217,7 +217,7 @@ This is intentional so a DAST scanner can detect refresh token reuse.
 ### REST: Admin List Products
 
 ```bash
-curl -s 'http://127.0.0.1:8089/api/admin/products' \
+curl -s 'http://127.0.0.1:8089/api/products' \
   -H 'Authorization: Bearer ADMIN_ACCESS_TOKEN'
 ```
 
@@ -226,7 +226,7 @@ Admins see product names, prices, and stock.
 ### REST: Admin Create Product
 
 ```bash
-curl -s -X POST 'http://127.0.0.1:8089/api/admin/products' \
+curl -s -X POST 'http://127.0.0.1:8089/api/products' \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer ADMIN_ACCESS_TOKEN' \
   --data '{"sku":"SKU-REST-1","name":"REST Demo Product","price":77.70,"stock":7}'
@@ -242,7 +242,7 @@ Content-Type: application/json
 ### REST: Admin Edit Product With PUSH
 
 ```bash
-curl -s -X PUSH 'http://127.0.0.1:8089/api/admin/products' \
+curl -s -X PUSH 'http://127.0.0.1:8089/api/products' \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer ADMIN_ACCESS_TOKEN' \
   --data '{"sku":"SKU-REST-1","price":88.80,"stock":8}'
@@ -251,7 +251,7 @@ curl -s -X PUSH 'http://127.0.0.1:8089/api/admin/products' \
 Some tools do not support custom HTTP verbs well. For those tools, use this Swagger-friendly alias:
 
 ```bash
-curl -s -X POST 'http://127.0.0.1:8089/api/admin/products/push' \
+curl -s -X POST 'http://127.0.0.1:8089/api/products/push' \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer ADMIN_ACCESS_TOKEN' \
   --data '{"sku":"SKU-REST-1","price":99.90}'
@@ -260,7 +260,7 @@ curl -s -X POST 'http://127.0.0.1:8089/api/admin/products/push' \
 ### REST: Admin Delete Product
 
 ```bash
-curl -s -X DELETE 'http://127.0.0.1:8089/api/admin/products?sku=SKU-REST-1' \
+curl -s -X DELETE 'http://127.0.0.1:8089/api/products?sku=SKU-REST-1' \
   -H 'Authorization: Bearer ADMIN_ACCESS_TOKEN'
 ```
 
@@ -275,7 +275,7 @@ curl -s -X POST 'http://127.0.0.1:8089/api/login' \
 ### REST: User List Products
 
 ```bash
-curl -s 'http://127.0.0.1:8089/api/user/products' \
+curl -s 'http://127.0.0.1:8089/api/products' \
   -H 'Authorization: Bearer USER_ACCESS_TOKEN'
 ```
 
@@ -284,7 +284,7 @@ Users see product names and availability, but not prices.
 ### REST: User Forbidden Write
 
 ```bash
-curl -i -X POST 'http://127.0.0.1:8089/api/user/products' \
+curl -i -X POST 'http://127.0.0.1:8089/api/products' \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer USER_ACCESS_TOKEN' \
   --data '{"sku":"SKU-BLOCKED","name":"Blocked Product","price":1,"stock":1}'
@@ -410,7 +410,7 @@ In vulnerable mode:
 ### SOAP/XML: Admin List Products
 
 ```bash
-curl -s 'http://127.0.0.1:8089/admin/products' \
+curl -s 'http://127.0.0.1:8089/products' \
   -H 'Authorization: Bearer ADMIN_ACCESS_TOKEN'
 ```
 
@@ -423,7 +423,7 @@ Content-Type: application/xml
 ### SOAP/XML: Admin Create Product
 
 ```bash
-curl -s -X POST 'http://127.0.0.1:8089/admin/products' \
+curl -s -X POST 'http://127.0.0.1:8089/products' \
   -H 'Content-Type: application/xml' \
   -H 'Authorization: Bearer ADMIN_ACCESS_TOKEN' \
   --data '<product><sku>SKU-XML-1</sku><name>XML Demo Product</name><price>55.50</price><stock>5</stock></product>'
@@ -447,7 +447,7 @@ The vulnerable app accepts both the direct `<product>` body and this scanner-sty
 ### SOAP/XML: Admin Edit Product With PUSH
 
 ```bash
-curl -s -X PUSH 'http://127.0.0.1:8089/admin/products' \
+curl -s -X PUSH 'http://127.0.0.1:8089/products' \
   -H 'Content-Type: application/xml' \
   -H 'Authorization: Bearer ADMIN_ACCESS_TOKEN' \
   --data '<product><sku>SKU-XML-1</sku><price>66.60</price><stock>6</stock></product>'
@@ -456,21 +456,21 @@ curl -s -X PUSH 'http://127.0.0.1:8089/admin/products' \
 ### SOAP/XML: Admin Delete Product
 
 ```bash
-curl -s -X DELETE 'http://127.0.0.1:8089/admin/products?sku=SKU-XML-1' \
+curl -s -X DELETE 'http://127.0.0.1:8089/products?sku=SKU-XML-1' \
   -H 'Authorization: Bearer ADMIN_ACCESS_TOKEN'
 ```
 
 ### SOAP/XML: User List Products
 
 ```bash
-curl -s 'http://127.0.0.1:8089/user/products' \
+curl -s 'http://127.0.0.1:8089/products' \
   -H 'Authorization: Bearer USER_ACCESS_TOKEN'
 ```
 
 ### SOAP/XML: User Forbidden Write
 
 ```bash
-curl -i -X POST 'http://127.0.0.1:8089/user/products' \
+curl -i -X POST 'http://127.0.0.1:8089/products' \
   -H 'Content-Type: application/xml' \
   -H 'Authorization: Bearer USER_ACCESS_TOKEN' \
   --data '<product><sku>SKU-BLOCKED</sku><name>Blocked Product</name><price>1</price><stock>1</stock></product>'
@@ -551,12 +551,12 @@ REST JSON targets:
 - `POST /api/login`
 - `POST /api/refresh`
 - `GET /api/validate`
-- `GET /api/admin/products`
-- `POST /api/admin/products`
-- `PUSH /api/admin/products`
-- `DELETE /api/admin/products`
-- `GET /api/user/products`
-- `POST /api/user/products`
+- `GET /api/products`
+- `POST /api/products`
+- `PUSH /api/products`
+- `DELETE /api/products`
+- `GET /api/products`
+- `POST /api/products`
 - `GET /api/products/eletronico?q=camera' OR '1'='1`
 - `GET /api/products/smarphone?id=1 OR 1=1`
 - `GET /api/products/laptops?sort=name; DROP TABLE products`
@@ -581,9 +581,9 @@ SOAP/XML targets:
 - `POST /soap/auth` with `SOAPAction: ValidateToken`
 - `POST /soap` with `SOAPAction: SearchUser`
 - `POST /soap` with `DOCTYPE` / `ENTITY`
-- `POST /admin/products`
-- `PUSH /admin/products`
-- `DELETE /admin/products`
+- `POST /products`
+- `PUSH /products`
+- `DELETE /products`
 - `GET /products/eletronico?q=camera' OR '1'='1`
 - `GET /products/smarphone?id=1 OR 1=1`
 - `GET /products/laptops?promotion=yes`
@@ -664,8 +664,8 @@ export ENVIRONMENT_NAME=cae-rest-soap-labs
 export CONTAINER_APP_NAME=ca-rest-soap-labs
 export ACR_NAME=restsoaplabs
 export IMAGE_PLATFORM=linux/amd64
-export MIN_REPLICAS=2
-export MAX_REPLICAS=2
+export MIN_REPLICAS=1
+export MAX_REPLICAS=1
 export CONTAINER_CPU=2.0
 export CONTAINER_MEMORY=4Gi
 
@@ -675,7 +675,7 @@ chmod +x deploy/azure/create-container-apps.sh
 
 The script uses `docker buildx build --platform linux/amd64 --push` by default. This fixes Azure errors like `no child with platform linux/amd64 in index`.
 
-For DAST scans, keep `MIN_REPLICAS=2`, `MAX_REPLICAS=2`, and sticky sessions enabled. SQLite stays local to each replica; use PostgreSQL, Azure SQL, or another external database if you need true shared `/report`, session, and refresh-token state across replicas.
+For DAST scans, keep `MIN_REPLICAS=1`, `MAX_REPLICAS=1`, and sticky sessions enabled. SQLite stays local to each replica; use PostgreSQL, Azure SQL, or another external database if you need true shared `/report`, session, and refresh-token state across replicas.
 
 Default Azure names:
 
@@ -882,7 +882,7 @@ O access token e um JWT dinamico. Cada login cria novos valores para `jti`, `iat
 Use o `accessToken` no header `Authorization`:
 
 ```bash
-curl -s 'http://127.0.0.1:8089/api/admin/products' \
+curl -s 'http://127.0.0.1:8089/api/products' \
   -H 'Authorization: Bearer YOUR_ACCESS_TOKEN'
 ```
 
@@ -919,7 +919,7 @@ Isso e intencional para permitir que um scanner DAST detecte reuso de refresh to
 ### REST: Admin Lista Produtos
 
 ```bash
-curl -s 'http://127.0.0.1:8089/api/admin/products' \
+curl -s 'http://127.0.0.1:8089/api/products' \
   -H 'Authorization: Bearer ADMIN_ACCESS_TOKEN'
 ```
 
@@ -928,7 +928,7 @@ Admins veem nome, preco e estoque dos produtos.
 ### REST: Admin Cria Produto
 
 ```bash
-curl -s -X POST 'http://127.0.0.1:8089/api/admin/products' \
+curl -s -X POST 'http://127.0.0.1:8089/api/products' \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer ADMIN_ACCESS_TOKEN' \
   --data '{"sku":"SKU-REST-1","name":"Produto REST Demo","price":77.70,"stock":7}'
@@ -944,7 +944,7 @@ Content-Type: application/json
 ### REST: Admin Edita Produto Com PUSH
 
 ```bash
-curl -s -X PUSH 'http://127.0.0.1:8089/api/admin/products' \
+curl -s -X PUSH 'http://127.0.0.1:8089/api/products' \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer ADMIN_ACCESS_TOKEN' \
   --data '{"sku":"SKU-REST-1","price":88.80,"stock":8}'
@@ -953,7 +953,7 @@ curl -s -X PUSH 'http://127.0.0.1:8089/api/admin/products' \
 Algumas ferramentas nao suportam bem verbos HTTP customizados. Para essas ferramentas, use o alias amigavel para Swagger:
 
 ```bash
-curl -s -X POST 'http://127.0.0.1:8089/api/admin/products/push' \
+curl -s -X POST 'http://127.0.0.1:8089/api/products/push' \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer ADMIN_ACCESS_TOKEN' \
   --data '{"sku":"SKU-REST-1","price":99.90}'
@@ -962,7 +962,7 @@ curl -s -X POST 'http://127.0.0.1:8089/api/admin/products/push' \
 ### REST: Admin Deleta Produto
 
 ```bash
-curl -s -X DELETE 'http://127.0.0.1:8089/api/admin/products?sku=SKU-REST-1' \
+curl -s -X DELETE 'http://127.0.0.1:8089/api/products?sku=SKU-REST-1' \
   -H 'Authorization: Bearer ADMIN_ACCESS_TOKEN'
 ```
 
@@ -977,7 +977,7 @@ curl -s -X POST 'http://127.0.0.1:8089/api/login' \
 ### REST: User Lista Produtos
 
 ```bash
-curl -s 'http://127.0.0.1:8089/api/user/products' \
+curl -s 'http://127.0.0.1:8089/api/products' \
   -H 'Authorization: Bearer USER_ACCESS_TOKEN'
 ```
 
@@ -986,7 +986,7 @@ Users veem nomes e disponibilidade, mas nao veem precos.
 ### REST: User Com Escrita Proibida
 
 ```bash
-curl -i -X POST 'http://127.0.0.1:8089/api/user/products' \
+curl -i -X POST 'http://127.0.0.1:8089/api/products' \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer USER_ACCESS_TOKEN' \
   --data '{"sku":"SKU-BLOCKED","name":"Produto Bloqueado","price":1,"stock":1}'
@@ -1112,7 +1112,7 @@ No modo vulneravel:
 ### SOAP/XML: Admin Lista Produtos
 
 ```bash
-curl -s 'http://127.0.0.1:8089/admin/products' \
+curl -s 'http://127.0.0.1:8089/products' \
   -H 'Authorization: Bearer ADMIN_ACCESS_TOKEN'
 ```
 
@@ -1125,7 +1125,7 @@ Content-Type: application/xml
 ### SOAP/XML: Admin Cria Produto
 
 ```bash
-curl -s -X POST 'http://127.0.0.1:8089/admin/products' \
+curl -s -X POST 'http://127.0.0.1:8089/products' \
   -H 'Content-Type: application/xml' \
   -H 'Authorization: Bearer ADMIN_ACCESS_TOKEN' \
   --data '<product><sku>SKU-XML-1</sku><name>Produto XML Demo</name><price>55.50</price><stock>5</stock></product>'
@@ -1149,7 +1149,7 @@ A aplicacao vulneravel aceita tanto o corpo direto `<product>` quanto esse wrapp
 ### SOAP/XML: Admin Edita Produto Com PUSH
 
 ```bash
-curl -s -X PUSH 'http://127.0.0.1:8089/admin/products' \
+curl -s -X PUSH 'http://127.0.0.1:8089/products' \
   -H 'Content-Type: application/xml' \
   -H 'Authorization: Bearer ADMIN_ACCESS_TOKEN' \
   --data '<product><sku>SKU-XML-1</sku><price>66.60</price><stock>6</stock></product>'
@@ -1158,21 +1158,21 @@ curl -s -X PUSH 'http://127.0.0.1:8089/admin/products' \
 ### SOAP/XML: Admin Deleta Produto
 
 ```bash
-curl -s -X DELETE 'http://127.0.0.1:8089/admin/products?sku=SKU-XML-1' \
+curl -s -X DELETE 'http://127.0.0.1:8089/products?sku=SKU-XML-1' \
   -H 'Authorization: Bearer ADMIN_ACCESS_TOKEN'
 ```
 
 ### SOAP/XML: User Lista Produtos
 
 ```bash
-curl -s 'http://127.0.0.1:8089/user/products' \
+curl -s 'http://127.0.0.1:8089/products' \
   -H 'Authorization: Bearer USER_ACCESS_TOKEN'
 ```
 
 ### SOAP/XML: User Com Escrita Proibida
 
 ```bash
-curl -i -X POST 'http://127.0.0.1:8089/user/products' \
+curl -i -X POST 'http://127.0.0.1:8089/products' \
   -H 'Content-Type: application/xml' \
   -H 'Authorization: Bearer USER_ACCESS_TOKEN' \
   --data '<product><sku>SKU-BLOCKED</sku><name>Produto Bloqueado</name><price>1</price><stock>1</stock></product>'
@@ -1253,12 +1253,12 @@ Alvos REST JSON:
 - `POST /api/login`
 - `POST /api/refresh`
 - `GET /api/validate`
-- `GET /api/admin/products`
-- `POST /api/admin/products`
-- `PUSH /api/admin/products`
-- `DELETE /api/admin/products`
-- `GET /api/user/products`
-- `POST /api/user/products`
+- `GET /api/products`
+- `POST /api/products`
+- `PUSH /api/products`
+- `DELETE /api/products`
+- `GET /api/products`
+- `POST /api/products`
 - `GET /api/products/eletronico?q=camera' OR '1'='1`
 - `GET /api/products/smarphone?id=1 OR 1=1`
 - `GET /api/products/laptops?sort=name; DROP TABLE products`
@@ -1283,9 +1283,9 @@ Alvos SOAP/XML:
 - `POST /soap/auth` com `SOAPAction: ValidateToken`
 - `POST /soap` com `SOAPAction: SearchUser`
 - `POST /soap` com `DOCTYPE` / `ENTITY`
-- `POST /admin/products`
-- `PUSH /admin/products`
-- `DELETE /admin/products`
+- `POST /products`
+- `PUSH /products`
+- `DELETE /products`
 - `GET /products/eletronico?q=camera' OR '1'='1`
 - `GET /products/smarphone?id=1 OR 1=1`
 - `GET /products/laptops?promotion=yes`
@@ -1366,8 +1366,8 @@ export ENVIRONMENT_NAME=cae-rest-soap-labs
 export CONTAINER_APP_NAME=ca-rest-soap-labs
 export ACR_NAME=restsoaplabs
 export IMAGE_PLATFORM=linux/amd64
-export MIN_REPLICAS=2
-export MAX_REPLICAS=2
+export MIN_REPLICAS=1
+export MAX_REPLICAS=1
 export CONTAINER_CPU=2.0
 export CONTAINER_MEMORY=4Gi
 
@@ -1377,7 +1377,7 @@ chmod +x deploy/azure/create-container-apps.sh
 
 O script usa `docker buildx build --platform linux/amd64 --push` por padrao. Isso corrige erros da Azure como `no child with platform linux/amd64 in index`.
 
-Para scans DAST, mantenha `MIN_REPLICAS=2`, `MAX_REPLICAS=2` e sticky sessions habilitado. O SQLite fica local em cada replica; use PostgreSQL, Azure SQL ou outro banco externo se precisar compartilhar `/report`, sessao e refresh token entre replicas.
+Para scans DAST, mantenha `MIN_REPLICAS=1`, `MAX_REPLICAS=1` e sticky sessions habilitado. O SQLite fica local em cada replica; use PostgreSQL, Azure SQL ou outro banco externo se precisar compartilhar `/report`, sessao e refresh token entre replicas.
 
 Nomes padrao na Azure:
 

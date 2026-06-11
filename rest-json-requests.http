@@ -21,11 +21,11 @@ GET http://127.0.0.1:8089/api/validate
 Authorization: Bearer {{access_token}}
 
 ### REST admin list products
-GET http://127.0.0.1:8089/api/admin/products
+GET http://127.0.0.1:8089/api/products
 Authorization: Bearer {{access_token}}
 
 ### REST admin create product
-POST http://127.0.0.1:8089/api/admin/products
+POST http://127.0.0.1:8089/api/products
 Content-Type: application/json
 Authorization: Bearer {{access_token}}
 
@@ -37,7 +37,7 @@ Authorization: Bearer {{access_token}}
 }
 
 ### REST admin edit product with custom PUSH
-PUSH http://127.0.0.1:8089/api/admin/products
+PUSH http://127.0.0.1:8089/api/products
 Content-Type: application/json
 Authorization: Bearer {{access_token}}
 
@@ -48,7 +48,7 @@ Authorization: Bearer {{access_token}}
 }
 
 ### REST admin edit product with Swagger-friendly alias
-POST http://127.0.0.1:8089/api/admin/products/push
+POST http://127.0.0.1:8089/api/products/push
 Content-Type: application/json
 Authorization: Bearer {{access_token}}
 
@@ -58,7 +58,7 @@ Authorization: Bearer {{access_token}}
 }
 
 ### REST admin delete product
-DELETE http://127.0.0.1:8089/api/admin/products?sku=SKU-REST-1
+DELETE http://127.0.0.1:8089/api/products?sku=SKU-REST-1
 Authorization: Bearer {{access_token}}
 
 ### REST refresh token, intentionally reusable in vulnerable mode
@@ -79,11 +79,11 @@ Content-Type: application/json
 }
 
 ### REST user list products
-GET http://127.0.0.1:8089/api/user/products
+GET http://127.0.0.1:8089/api/products
 Authorization: Bearer {{user_access_token}}
 
 ### REST user forbidden write
-POST http://127.0.0.1:8089/api/user/products
+POST http://127.0.0.1:8089/api/products
 Content-Type: application/json
 Authorization: Bearer {{user_access_token}}
 

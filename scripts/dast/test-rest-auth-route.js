@@ -65,10 +65,10 @@ async function main() {
   }
   console.log(`Validated subject: ${validate.json.subject}`);
 
-  const products = await getJson("/api/admin/products", {
+  const products = await getJson("/api/products", {
     "Authorization": `Bearer ${refreshedAccessToken}`,
   });
-  requireStatus("GET /api/admin/products", products, 200);
+  requireStatus("GET /api/products", products, 200);
   console.log("Authenticated REST route consumed successfully.");
 }
 

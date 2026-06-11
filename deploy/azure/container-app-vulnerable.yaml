@@ -8,11 +8,11 @@ properties:
       transport: http
   template:
     scale:
-      minReplicas: 2
-      maxReplicas: 2
+      minReplicas: 1
+      maxReplicas: 1
     containers:
       - name: ca-rest-soap-labs
-        image: restsoaplabs.azurecr.io/rest-soap-labs:stable-sticky-20260610
+        image: restsoaplabs.azurecr.io/rest-soap-labs:single-replica-primary-routes-override-20260611
         env:
           - name: SOAP_DAST_HOST
             value: 0.0.0.0

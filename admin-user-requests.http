@@ -18,11 +18,11 @@ GET http://127.0.0.1:8089/admin
 Authorization: Bearer {{admin_access_token}}
 
 ### Admin product list on collection path
-GET http://127.0.0.1:8089/admin/products
+GET http://127.0.0.1:8089/products
 Authorization: Bearer {{admin_access_token}}
 
 ### Admin create product
-POST http://127.0.0.1:8089/admin/products
+POST http://127.0.0.1:8089/products
 Content-Type: application/xml
 Authorization: Bearer {{admin_access_token}}
 
@@ -35,7 +35,7 @@ Authorization: Bearer {{admin_access_token}}
 </product>
 
 ### Admin edit product with custom PUSH verb
-PUSH http://127.0.0.1:8089/admin/products
+PUSH http://127.0.0.1:8089/products
 Content-Type: application/xml
 Authorization: Bearer {{admin_access_token}}
 
@@ -47,7 +47,7 @@ Authorization: Bearer {{admin_access_token}}
 </product>
 
 ### Admin delete product
-DELETE http://127.0.0.1:8089/admin/products?sku=SKU-600
+DELETE http://127.0.0.1:8089/products?sku=SKU-600
 Authorization: Bearer {{admin_access_token}}
 
 ### Login as user
@@ -70,7 +70,7 @@ GET http://127.0.0.1:8089/user
 Authorization: Bearer {{user_access_token}}
 
 ### User product list
-GET http://127.0.0.1:8089/user/products
+GET http://127.0.0.1:8089/products
 Authorization: Bearer {{user_access_token}}
 
 ### User should not access admin
@@ -78,7 +78,7 @@ GET http://127.0.0.1:8089/admin
 Authorization: Bearer {{user_access_token}}
 
 ### User should not create products
-POST http://127.0.0.1:8089/user/products
+POST http://127.0.0.1:8089/products
 Content-Type: application/xml
 Authorization: Bearer {{user_access_token}}
 
