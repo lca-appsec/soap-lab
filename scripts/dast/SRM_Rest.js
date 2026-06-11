@@ -3,6 +3,7 @@ var refreshToken = null;
 var tokenExpiresAt = null;
 var defaultUsername = "admin_aurora";
 var defaultPassword = "adminpass1";
+var defaultForwardedFor = "203.0.113.10";
 
 function run() {
     if (bearerToken === null) {
@@ -65,6 +66,7 @@ function createLoginRequest(username, password) {
     tokenRequest.addHeader("Content-Type", "application/json");
     tokenRequest.addHeader("Accept", "application/json");
     tokenRequest.addHeader("user-agent", "Veracode DAST");
+    tokenRequest.addHeader("X-Forwarded-For", getForwardedForHeader());
     tokenRequest.setMethod("POST");
     tokenRequest.setBody(buildLoginBody(username, password));
 
@@ -77,6 +79,7 @@ function createRefreshTokenRequest(currentRefreshToken) {
     var tokenRequest = httpClient.createRequest(refreshUrl);
     tokenRequest.addHeader("Content-Type", "application/json");
     tokenRequest.addHeader("Accept", "application/json");
+    tokenRequest.addHeader("X-Forwarded-For", getForwardedForHeader());
     if (bearerToken !== null && bearerToken !== "") {
         tokenRequest.addHeader("Authorization", "Bearer " + bearerToken);
     }
@@ -91,6 +94,7 @@ function createValidateTokenRequest(currentAccessToken) {
 
     var tokenRequest = httpClient.createRequest(validateUrl);
     tokenRequest.addHeader("Accept", "application/json");
+    tokenRequest.addHeader("X-Forwarded-For", getForwardedForHeader());
     tokenRequest.addHeader("Authorization", "Bearer " + currentAccessToken);
     tokenRequest.setMethod("GET");
 
@@ -158,6 +162,10 @@ function getVariableOrDefault(name, fallback) {
     return trimValue(String(value));
 }
 
+function getForwardedForHeader() {
+    return getVariableOrDefault("xForwardedFor", defaultForwardedFor);
+}
+
 function trimValue(value) {
     return value.replace(/^\s+|\s+$/g, "");
 }
@@ -175,6 +183,7 @@ function isTokenExpired() {
 
 function updateRequestHeaders(token) {
     request.addHeader("Authorization", "Bearer " + token);
+    request.addHeader("X-Forwarded-For", getForwardedForHeader());
 }
 
 function updateCurrentRefreshRequestBodyIfNeeded() {
@@ -185,6 +194,7 @@ function updateCurrentRefreshRequestBodyIfNeeded() {
 
     request.addHeader("Content-Type", "application/json");
     request.addHeader("Accept", "application/json");
+    request.addHeader("X-Forwarded-For", getForwardedForHeader());
     if (bearerToken !== null && bearerToken !== "") {
         request.addHeader("Authorization", "Bearer " + bearerToken);
     }

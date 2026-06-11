@@ -1,7 +1,7 @@
-### Vulnerable WSDL
+### WSDL
 GET http://127.0.0.1:8089/soap?wsdl
 
-### Vulnerable Login with session fixation
+### Login with session fixation
 POST http://127.0.0.1:8089/soap
 Content-Type: text/xml
 SOAPAction: Login
@@ -64,4 +64,4 @@ SOAPAction: SearchUser
 
 ### TRACE reflection
 TRACE http://127.0.0.1:8089/verbs
-X-Probe: reflected-by-vulnerable-server
+X-Probe: reflected-by-lab-server

@@ -1,9 +1,9 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "Vulnerable SOAP Lab - REST JSON API",
+    "title": "SOAP and REST DAST Lab - REST JSON API",
     "version": "1.0.0",
-    "description": "Intentionally vulnerable REST JSON API for authorized DAST/fuzzing demonstrations."
+    "description": "Intentionally testable REST JSON API for authorized DAST/fuzzing demonstrations."
   },
   "servers": [
     {
@@ -68,6 +68,18 @@
     "/api/login": {
       "post": {
         "summary": "Login and receive JWT, refresh token, and session id",
+        "parameters": [
+          {
+            "name": "X-Forwarded-For",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "203.0.113.10",
+            "description": "Optional source IP evidence header captured by /login-audit."
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -90,7 +102,19 @@
     },
     "/api/refresh": {
       "post": {
-        "summary": "Issue a new dynamic JWT using a reusable vulnerable refresh token",
+        "summary": "Issue a new dynamic JWT using a reusable reusable refresh token",
+        "parameters": [
+          {
+            "name": "X-Forwarded-For",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "203.0.113.10",
+            "description": "Optional source IP evidence header captured by /login-audit."
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -107,6 +131,49 @@
           },
           "401": {
             "description": "Refresh failed"
+          }
+        }
+      }
+    },
+    "/api/logout": {
+      "post": {
+        "summary": "Logout the current REST session and optionally deactivate the supplied refresh token",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Forwarded-For",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "203.0.113.10",
+            "description": "Optional source IP evidence header captured by /login-audit."
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshRequest"
+              },
+              "example": {
+                "refreshToken": "YOUR_REFRESH_TOKEN"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Logged out"
+          },
+          "401": {
+            "description": "Token rejected"
           }
         }
       }
@@ -1043,7 +1110,7 @@
         }
       },
       "post": {
-        "summary": "Submit vulnerable comment",
+        "summary": "Submit testable comment",
         "requestBody": {
           "required": true,
           "content": {
@@ -1089,12 +1156,32 @@
         }
       }
     },
+    "/api/login-audit": {
+      "get": {
+        "summary": "Read focused login, refresh, and logout audit evidence",
+        "responses": {
+          "200": {
+            "description": "Login audit evidence"
+          }
+        }
+      }
+    },
     "/report": {
       "get": {
         "summary": "Executive HTML authentication report",
         "responses": {
           "200": {
             "description": "Human-readable login tracking report"
+          }
+        }
+      }
+    },
+    "/login-audit": {
+      "get": {
+        "summary": "Executive HTML login audit report",
+        "responses": {
+          "200": {
+            "description": "Human-readable login, refresh, and logout report"
           }
         }
       }

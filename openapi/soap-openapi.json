@@ -1,7 +1,7 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "Vulnerable SOAP Lab - XML/SOAP API",
+    "title": "SOAP and REST DAST Lab - XML/SOAP API",
     "version": "1.0.0",
     "description": "Swagger-style documentation for the XML/SOAP attack lab. SOAPAction selects the operation."
   },
@@ -48,6 +48,16 @@
                 "Logout"
               ]
             }
+          },
+          {
+            "name": "X-Forwarded-For",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "203.0.113.10",
+            "description": "Optional source IP evidence header captured by /login-audit."
           }
         ],
         "requestBody": {
@@ -92,6 +102,16 @@
                 "ValidateToken"
               ]
             }
+          },
+          {
+            "name": "X-Forwarded-For",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "203.0.113.10",
+            "description": "Optional source IP evidence header captured by /login-audit."
           }
         ],
         "requestBody": {
@@ -138,6 +158,16 @@
                 "RefreshToken"
               ]
             }
+          },
+          {
+            "name": "X-Forwarded-For",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "203.0.113.10",
+            "description": "Optional source IP evidence header captured by /login-audit."
           }
         ],
         "requestBody": {
@@ -987,7 +1017,7 @@
         }
       },
       "post": {
-        "summary": "Submit vulnerable comment",
+        "summary": "Submit testable comment",
         "responses": {
           "200": {
             "description": "HTML response with unescaped stored comment"
@@ -1011,6 +1041,16 @@
         "responses": {
           "200": {
             "description": "Login and token tracking evidence"
+          }
+        }
+      }
+    },
+    "/login-audit": {
+      "get": {
+        "summary": "HTML login, refresh, and logout audit report",
+        "responses": {
+          "200": {
+            "description": "Human-readable login audit report"
           }
         }
       }

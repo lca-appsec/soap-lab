@@ -31,7 +31,7 @@ Authorization: Bearer {{access_token}}
 
 {
   "sku": "SKU-REST-1",
-  "name": "REST Vulnerable Product",
+  "name": "REST Test Product",
   "price": 77.7,
   "stock": 7
 }
@@ -61,7 +61,7 @@ Authorization: Bearer {{access_token}}
 DELETE http://127.0.0.1:8089/api/products?sku=SKU-REST-1
 Authorization: Bearer {{access_token}}
 
-### REST refresh token, intentionally reusable in vulnerable mode
+### REST refresh token, intentionally reusable in test mode
 POST http://127.0.0.1:8089/api/refresh
 Content-Type: application/json
 

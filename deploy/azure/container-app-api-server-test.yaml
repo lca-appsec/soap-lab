@@ -12,7 +12,7 @@ properties:
       maxReplicas: 1
     containers:
       - name: ca-rest-soap-labs
-        image: restsoaplabs.azurecr.io/rest-soap-labs:swagger-product-examples-20260611
+        image: restsoaplabs.azurecr.io/rest-soap-labs:login-audit-neutral-names-20260611
         env:
           - name: SOAP_DAST_HOST
             value: 0.0.0.0

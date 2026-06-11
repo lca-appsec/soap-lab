@@ -80,7 +80,7 @@ az containerapp ingress sticky-sessions set \
 
 echo "Sticky sessions are enabled. SQLite uses /tmp by default; use an external database for true cross-replica persistence."
 
-echo "Vulnerable app URL:"
+echo "App URL:"
 echo "https://${VULN_FQDN}/soap?wsdl"
 echo "REST Swagger:"
 echo "https://${VULN_FQDN}/swagger/rest.json"

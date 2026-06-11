@@ -3,6 +3,7 @@ var refreshToken = null;
 var tokenExpiresAt = null;
 var defaultUsername = "admin_aurora";
 var defaultPassword = "adminpass1";
+var defaultForwardedFor = "203.0.113.10";
 
 function run() {
     if (bearerToken === null) {
@@ -64,6 +65,7 @@ function createLoginRequest(username, password) {
     var tokenRequest = httpClient.createRequest(loginUrl);
     tokenRequest.addHeader("Content-Type", "application/xml");
     tokenRequest.addHeader("user-agent", "Veracode DAST");
+    tokenRequest.addHeader("X-Forwarded-For", getForwardedForHeader());
     tokenRequest.addHeader("SOAPAction", "Login");
     tokenRequest.setMethod("POST");
 
@@ -85,6 +87,7 @@ function createRefreshTokenRequest(currentRefreshToken) {
 
     var tokenRequest = httpClient.createRequest(refreshUrl);
     tokenRequest.addHeader("Content-Type", "application/xml");
+    tokenRequest.addHeader("X-Forwarded-For", getForwardedForHeader());
     tokenRequest.addHeader("SOAPAction", "RefreshToken");
     if (bearerToken !== null && bearerToken !== "") {
         tokenRequest.addHeader("Authorization", "Bearer " + bearerToken);
@@ -101,6 +104,7 @@ function createValidateTokenRequest(currentAccessToken) {
 
     var tokenRequest = httpClient.createRequest(validateUrl);
     tokenRequest.addHeader("Content-Type", "application/xml");
+    tokenRequest.addHeader("X-Forwarded-For", getForwardedForHeader());
     tokenRequest.addHeader("SOAPAction", "ValidateToken");
     tokenRequest.addHeader("Authorization", "Bearer " + currentAccessToken);
     tokenRequest.setMethod("POST");
@@ -168,6 +172,10 @@ function getVariableOrDefault(name, fallback) {
     return trimValue(String(value));
 }
 
+function getForwardedForHeader() {
+    return getVariableOrDefault("xForwardedFor", defaultForwardedFor);
+}
+
 function getXmlTagValue(xml, tagName) {
     var leafRegex = new RegExp("<(?:[A-Za-z0-9_]+:)?" + tagName + "(?:\\s[^>]*)?>([^<>]*)</(?:[A-Za-z0-9_]+:)?" + tagName + ">", "ig");
     var leafMatch = null;
@@ -208,6 +216,7 @@ function isTokenExpired() {
 
 function updateRequestHeaders(token) {
     request.addHeader("Authorization", "Bearer " + token);
+    request.addHeader("X-Forwarded-For", getForwardedForHeader());
 }
 
 function updateCurrentRefreshRequestBodyIfNeeded() {
@@ -217,6 +226,7 @@ function updateCurrentRefreshRequestBodyIfNeeded() {
     }
 
     request.addHeader("Content-Type", "application/xml");
+    request.addHeader("X-Forwarded-For", getForwardedForHeader());
     request.addHeader("SOAPAction", "RefreshToken");
     if (bearerToken !== null && bearerToken !== "") {
         request.addHeader("Authorization", "Bearer " + bearerToken);

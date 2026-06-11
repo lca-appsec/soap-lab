@@ -197,6 +197,25 @@ LOGIN_TRACKING_PATHS = {
     "/api/login",
     "/api/refresh",
     "/api/validate",
+    "/api/logout",
+}
+
+LOGIN_AUDIT_PATHS = {
+    "/soap/auth",
+    "/soap/refreshtoken",
+    "/soap",
+    "/api/login",
+    "/api/refresh",
+    "/api/logout",
+}
+
+LOGIN_AUDIT_AUTH_EVENTS = {
+    "lab_login",
+    "lab_rest_login",
+    "lab_refresh_token",
+    "lab_rest_refresh_token",
+    "logout",
+    "rest_logout",
 }
 
 
@@ -945,6 +964,74 @@ def login_tracking_report(limit=100):
     }
 
 
+def is_login_audit_event(entry):
+    event = str(entry.get("event", ""))
+    path = str(entry.get("path", "")).split("?")[0]
+    soap_action = str(entry.get("soap_action", ""))
+
+    if entry.get("type") == "auth":
+        return event in LOGIN_AUDIT_AUTH_EVENTS or event in {
+            "login",
+            "refresh_token",
+            "rest_login",
+            "rest_refresh_token",
+        }
+
+    if entry.get("type") == "interaction":
+        if path in LOGIN_AUDIT_PATHS:
+            if path == "/soap":
+                return soap_action == "Logout"
+            return True
+        return soap_action in {"Login", "RefreshToken", "Logout"}
+
+    return path in LOGIN_AUDIT_PATHS
+
+
+def login_audit_report(limit=100):
+    all_events = persisted_audit_events(max(5000, limit))
+    events = [entry for entry in all_events if is_login_audit_event(entry)]
+    selected = []
+    for entry in events[-limit:]:
+        enriched = dict(entry)
+        enriched.update(local_time_fields(entry.get("time")))
+        headers = enriched.get("headers")
+        if isinstance(headers, dict):
+            enriched.setdefault("user_agent", headers.get("User-Agent") or headers.get("user-agent") or "")
+            enriched.setdefault("x_forwarded_for", headers.get("X-Forwarded-For") or headers.get("x-forwarded-for") or "")
+            enriched.setdefault("destination", headers.get("Host") or headers.get("host") or enriched.get("destination", ""))
+        if "status" in enriched and isinstance(enriched.get("status"), int):
+            enriched.setdefault("http_status", enriched["status"])
+        selected.append(enriched)
+
+    summary = {
+        "total_events": len(events),
+        "returned_events": len(selected),
+        "timezone": LOCAL_TIMEZONE_NAME,
+        "login_success": 0,
+        "login_failure": 0,
+        "refresh_success": 0,
+        "refresh_failure": 0,
+        "logout_success": 0,
+        "logout_failure": 0,
+    }
+    for entry in events:
+        event = str(entry.get("event", ""))
+        status = str(entry.get("status", ""))
+        if "login" in event and "refresh" not in event:
+            summary["login_success" if status == "success" else "login_failure"] += 1
+        if "refresh" in event:
+            summary["refresh_success" if status == "success" else "refresh_failure"] += 1
+        if "logout" in event:
+            summary["logout_success" if status == "success" else "logout_failure"] += 1
+
+    return {
+        "description": "Login audit evidence for login, re-login through refresh token, and logout interactions.",
+        "retention": "audit events, sessions, and refresh tokens are stored in SQLite on the active replica",
+        "summary": summary,
+        "events": selected,
+    }
+
+
 def issue_tokens(username):
     session_id = secrets.token_urlsafe(24)
     user = USERS[username]
@@ -1026,6 +1113,7 @@ class SoapDastHandler(BaseHTTPRequestHandler):
                 "x-forwarded-for",
                 "x-real-ip",
                 "forwarded",
+                "host",
             }
         }
 
@@ -1035,6 +1123,7 @@ class SoapDastHandler(BaseHTTPRequestHandler):
             "x_forwarded_for": self.headers.get("X-Forwarded-For", ""),
             "x_real_ip": self.headers.get("X-Real-IP", ""),
             "forwarded": self.headers.get("Forwarded", ""),
+            "destination": self.headers.get("Host", ""),
         }
 
     def log_interaction_event(self, event, status=None, action=None, request_body=None, response_body=None, details=None):
@@ -1056,11 +1145,13 @@ class SoapDastHandler(BaseHTTPRequestHandler):
         if request_body is not None:
             redacted_request_body = redact_sensitive_xml(request_body)
             entry["request_body_length"] = len(request_body)
+            entry["raw_request_body"] = request_body
             entry["request_body"] = redacted_request_body
             entry["request_body_preview"] = redacted_request_body[:1000]
         if response_body is not None:
             redacted_response_body = redact_sensitive_xml(response_body)
             entry["response_body_length"] = len(response_body)
+            entry["raw_response_body"] = response_body
             entry["response_body"] = redacted_response_body
             entry["response_body_preview"] = redacted_response_body[:1000]
         if details:
@@ -1168,7 +1259,7 @@ class SoapDastHandler(BaseHTTPRequestHandler):
 
     def do_HEAD(self):
         parsed = urlparse(self.path)
-        if parsed.path in {"/", "/health", "/soap", "/soap/auth", "/soap/refreshtoken", "/audit", "/login-tracking"}:
+        if parsed.path in {"/", "/health", "/soap", "/soap/auth", "/soap/refreshtoken", "/audit", "/login-tracking", "/login-audit"}:
             self.send_head_only(200)
             return
         if parsed.path == "/soap" and "wsdl" in parse_qs(parsed.query, keep_blank_values=True):
@@ -1233,6 +1324,15 @@ class SoapDastHandler(BaseHTTPRequestHandler):
             limit = max(1, min(limit, 500))
             self.send_json(200, login_tracking_report(limit))
             return
+        if parsed.path == "/login-audit":
+            query = parse_qs(parsed.query, keep_blank_values=True)
+            try:
+                limit = int(query.get("limit", ["100"])[0])
+            except ValueError:
+                limit = 100
+            limit = max(1, min(limit, 500))
+            self.send_json(200, login_audit_report(limit))
+            return
         if parsed.path == "/soap/auth":
             self.send_json(
                 200,
@@ -1244,6 +1344,7 @@ class SoapDastHandler(BaseHTTPRequestHandler):
                     "allowed_soap_actions": ["Login", "ValidateToken"],
                     "audit": "Authentication and token validation attempts are recorded in /audit.",
                     "login_tracking": "/login-tracking",
+                    "login_audit": "/login-audit",
                 },
             )
             return
@@ -1257,6 +1358,7 @@ class SoapDastHandler(BaseHTTPRequestHandler):
                     "allowed_soap_actions": ["RefreshToken"],
                     "audit": "Refresh token requests are recorded in /audit and /login-tracking.",
                     "login_tracking": "/login-tracking",
+                    "login_audit": "/login-audit",
                 },
             )
             return
@@ -1952,7 +2054,7 @@ class SoapDastHandler(BaseHTTPRequestHandler):
         )
 
 
-# Vulnerable API server entrypoint.
+# API server entrypoint.
 HOST = os.environ.get("SOAP_DAST_HOST", "127.0.0.1")
 PORT = int(os.environ.get("SOAP_DAST_VULN_PORT", "8089"))
 PUBLIC_HOST = os.environ.get("SOAP_DAST_PUBLIC_HOST", HOST)
@@ -1973,11 +2075,11 @@ def insecure_verify_jwt(token):
         header = json.loads(b64url_decode(parts[0]))
         payload = json.loads(b64url_decode(parts[1]))
 
-        # Vulnerability: accepts unsigned JWTs and does not validate signatures.
+        # SecurityNote: accepts unsigned JWTs and does not validate signatures.
         if header.get("alg") == "none":
             return payload, None
 
-        # Vulnerability: for signed-looking tokens, only parses claims and ignores
+        # SecurityNote: for signed-looking tokens, only parses claims and ignores
         # HMAC validation, issuer validation, nbf validation, and server-side session binding.
         exp = int(payload.get("exp", int(time.time()) + 3600))
         if int(time.time()) >= exp:
@@ -1990,18 +2092,18 @@ def insecure_verify_jwt(token):
 def unsafe_response_element(action, fields):
     lines = [f"    <lab:{action}Response>"]
     for key, value in fields.items():
-        # Vulnerability: intentionally does not XML-escape reflected values.
+        # SecurityNote: intentionally does not XML-escape reflected values.
         lines.append(f"      <lab:{key}>{value}</lab:{key}>")
     lines.append(f"    </lab:{action}Response>")
     return soap_envelope("\n".join(lines))
 
 
-VULNERABLE_WSDL = WSDL.replace(
+LAB_WSDL = WSDL.replace(
     f":{PUBLIC_PORT}/", f":{PUBLIC_PORT}/"
 ).replace(
     f"://{PUBLIC_HOST}:", f"://{PUBLIC_HOST}:"
 ).replace(
-    "SecurityTestService", "VulnerableSecurityTestService"
+    "SecurityTestService", "SecurityTestLabService"
 )
 
 
@@ -2049,7 +2151,7 @@ def looks_like_sql_injection(query):
     return any(marker in combined for marker in markers)
 
 
-def vulnerable_catalog_sql(category, query):
+def lab_catalog_sql(category, query):
     search = query.get("q", [""])[0]
     product_id = query.get("id", [""])[0]
     sort = query.get("sort", ["name"])[0]
@@ -2135,13 +2237,24 @@ def named_product_xml_examples(products, summary_prefix):
     }
 
 
+def x_forwarded_for_parameter():
+    return {
+        "name": "X-Forwarded-For",
+        "in": "header",
+        "required": False,
+        "schema": {"type": "string"},
+        "example": "203.0.113.10",
+        "description": "Optional source IP evidence header captured by /login-audit.",
+    }
+
+
 def rest_openapi_spec():
     return {
         "openapi": "3.0.3",
         "info": {
-            "title": "Vulnerable SOAP Lab - REST JSON API",
+            "title": "SOAP and REST DAST Lab - REST JSON API",
             "version": "1.0.0",
-            "description": "Intentionally vulnerable REST JSON API for authorized DAST/fuzzing demonstrations.",
+            "description": "Intentionally testable REST JSON API for authorized DAST/fuzzing demonstrations.",
         },
         "servers": [{"url": public_base_url()}],
         "components": {
@@ -2174,6 +2287,7 @@ def rest_openapi_spec():
             "/api/login": {
                 "post": {
                     "summary": "Login and receive JWT, refresh token, and session id",
+                    "parameters": [x_forwarded_for_parameter()],
                     "requestBody": {
                         "required": True,
                         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LoginRequest"}}},
@@ -2183,12 +2297,30 @@ def rest_openapi_spec():
             },
             "/api/refresh": {
                 "post": {
-                    "summary": "Issue a new dynamic JWT using a reusable vulnerable refresh token",
+                    "summary": "Issue a new dynamic JWT using a reusable reusable refresh token",
+                    "parameters": [x_forwarded_for_parameter()],
                     "requestBody": {
                         "required": True,
                         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RefreshRequest"}}},
                     },
                     "responses": {"200": {"description": "New JWT issued"}, "401": {"description": "Refresh failed"}},
+                }
+            },
+            "/api/logout": {
+                "post": {
+                    "summary": "Logout the current REST session and optionally deactivate the supplied refresh token",
+                    "security": [{"bearerAuth": []}],
+                    "parameters": [x_forwarded_for_parameter()],
+                    "requestBody": {
+                        "required": False,
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/RefreshRequest"},
+                                "example": {"refreshToken": "YOUR_REFRESH_TOKEN"},
+                            }
+                        },
+                    },
+                    "responses": {"200": {"description": "Logged out"}, "401": {"description": "Token rejected"}},
                 }
             },
             "/api/validate": {
@@ -2282,14 +2414,16 @@ def rest_openapi_spec():
             "/comments": {
                 "get": {"summary": "Stored XSS comment form", "responses": {"200": {"description": "HTML comment form"}}},
                 "post": {
-                    "summary": "Submit vulnerable comment",
+                    "summary": "Submit testable comment",
                     "requestBody": {"required": True, "content": {"application/x-www-form-urlencoded": {"schema": {"type": "object", "properties": {"name": {"type": "string"}, "comment": {"type": "string"}}}}}},
                     "responses": {"200": {"description": "HTML page reflecting stored comment without escaping"}},
                 },
             },
             "/api/audit": {"get": {"summary": "Read HTTP/auth audit events", "responses": {"200": {"description": "Audit log"}}}},
             "/api/login-tracking": {"get": {"summary": "Read authentication tracking evidence", "responses": {"200": {"description": "Login and token tracking evidence"}}}},
+            "/api/login-audit": {"get": {"summary": "Read focused login, refresh, and logout audit evidence", "responses": {"200": {"description": "Login audit evidence"}}}},
             "/report": {"get": {"summary": "Executive HTML authentication report", "responses": {"200": {"description": "Human-readable login tracking report"}}}},
+            "/login-audit": {"get": {"summary": "Executive HTML login audit report", "responses": {"200": {"description": "Human-readable login, refresh, and logout report"}}}},
             "/health": {"get": {"summary": "Container health check", "responses": {"200": {"description": "Application is running"}}}},
         },
     }
@@ -2299,7 +2433,7 @@ def xml_openapi_spec():
     return {
         "openapi": "3.0.3",
         "info": {
-            "title": "Vulnerable SOAP Lab - XML/SOAP API",
+            "title": "SOAP and REST DAST Lab - XML/SOAP API",
             "version": "1.0.0",
             "description": "Swagger-style documentation for the XML/SOAP attack lab. SOAPAction selects the operation.",
         },
@@ -2329,7 +2463,8 @@ def xml_openapi_spec():
                                     "Logout",
                                 ],
                             },
-                        }
+                        },
+                        x_forwarded_for_parameter(),
                     ],
                     "requestBody": {
                         "required": True,
@@ -2354,7 +2489,8 @@ def xml_openapi_spec():
                             "in": "header",
                             "required": True,
                             "schema": {"type": "string", "enum": ["Login", "ValidateToken"]},
-                        }
+                        },
+                        x_forwarded_for_parameter(),
                     ],
                     "requestBody": {
                         "required": True,
@@ -2379,7 +2515,8 @@ def xml_openapi_spec():
                             "in": "header",
                             "required": True,
                             "schema": {"type": "string", "enum": ["RefreshToken"]},
-                        }
+                        },
+                        x_forwarded_for_parameter(),
                     ],
                     "requestBody": {
                         "required": True,
@@ -2448,18 +2585,19 @@ def xml_openapi_spec():
             "/ecommerce/support": {"get": {"summary": "XML e-commerce support tickets", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "XML support records"}}}},
             "/comments": {
                 "get": {"summary": "Stored/reflected XSS comment form", "responses": {"200": {"description": "HTML form"}}},
-                "post": {"summary": "Submit vulnerable comment", "responses": {"200": {"description": "HTML response with unescaped stored comment"}}},
+                "post": {"summary": "Submit testable comment", "responses": {"200": {"description": "HTML response with unescaped stored comment"}}},
             },
             "/audit": {"get": {"summary": "XML audit log", "responses": {"200": {"description": "XML audit events"}}}},
             "/login-tracking": {"get": {"summary": "XML authentication tracking evidence", "responses": {"200": {"description": "Login and token tracking evidence"}}}},
+            "/login-audit": {"get": {"summary": "HTML login, refresh, and logout audit report", "responses": {"200": {"description": "Human-readable login audit report"}}}},
             "/report": {"get": {"summary": "Executive HTML authentication report", "responses": {"200": {"description": "Human-readable login tracking report"}}}},
             "/health": {"get": {"summary": "Container health check", "responses": {"200": {"description": "Application is running"}}}},
         },
     }
 
 
-class VulnerableSoapDastHandler(SoapDastHandler):
-    server_version = "VulnerableSoapDastLab/1.0"
+class ApiServerTestHandler(SoapDastHandler):
+    server_version = "ApiServerTestLab/1.0"
 
     def send_json_api(self, status, data, headers=None):
         body = json.dumps(data, indent=2)
@@ -2474,7 +2612,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(raw)))
-        self.send_header("X-DAST-Lab", "vulnerable-rest-json")
+        self.send_header("X-DAST-Lab", "rest-json")
         self.send_header("Cache-Control", "no-store")
         if headers:
             for key, value in headers.items():
@@ -2504,6 +2642,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
     def read_json_api_body(self):
         length = int(self.headers.get("Content-Length", "0"))
         raw_body = self.rfile.read(length).decode("utf-8", errors="replace")
+        self.log_interaction_event("request_body_received", request_body=raw_body)
         if not raw_body.strip():
             return {}
         return json.loads(raw_body)
@@ -2515,7 +2654,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
         reflected.extend(f"{key}: {value}" for key, value in self.headers.items())
         reflected.append("")
         reflected.append(body)
-        # Vulnerability: TRACE reflects request metadata/body.
+        # SecurityNote: TRACE reflects request metadata/body.
         self.send_body(200, "\n".join(reflected), "message/http")
 
     def do_HEAD(self):
@@ -2530,10 +2669,13 @@ class VulnerableSoapDastHandler(SoapDastHandler):
             "/api/admin",
             "/api/user",
             "/api/products",
+            "/api/logout",
             "/api/audit",
             "/api/login-tracking",
+            "/api/login-audit",
             "/comments",
             "/report",
+            "/login-audit",
             "/audit",
             "/login-tracking",
             "/admin",
@@ -2543,7 +2685,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
             "/soap/auth",
             "/soap/refreshtoken",
         }:
-            content_type = "text/html" if parsed.path in {"/comments", "/report"} else "application/json"
+            content_type = "text/html" if parsed.path in {"/comments", "/report", "/login-audit"} else "application/json"
             if parsed.path in {"/audit", "/login-tracking", "/admin", "/user", "/products", "/soap", "/soap/auth", "/soap/refreshtoken"}:
                 content_type = "application/xml"
             self.send_head_only(200, content_type=content_type)
@@ -2581,11 +2723,12 @@ class VulnerableSoapDastHandler(SoapDastHandler):
             self.send_json_api(
                 200,
                 {
-                    "name": "Vulnerable SOAP Lab REST JSON API",
+                    "name": "SOAP and REST DAST Lab REST JSON API",
                     "swagger": "/swagger/rest.json",
                     "login": "/api/login",
                     "refresh": "/api/refresh",
                     "validate": "/api/validate",
+                    "logout": "/api/logout",
                     "admin": "/api/admin",
                     "user": "/api/user",
                     "products": "/api/products",
@@ -2610,6 +2753,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
                     "xss_comments": "/comments",
                     "audit": "/api/audit",
                     "login_tracking": "/api/login-tracking",
+                    "login_audit": "/login-audit",
                     "executive_report": "/report",
                 },
             )
@@ -2625,6 +2769,15 @@ class VulnerableSoapDastHandler(SoapDastHandler):
                 limit = 100
             limit = max(1, min(limit, 500))
             self.send_json_api(200, login_tracking_report(limit))
+            return
+        if parsed.path == "/api/login-audit":
+            query = parse_qs(parsed.query, keep_blank_values=True)
+            try:
+                limit = int(query.get("limit", ["100"])[0])
+            except ValueError:
+                limit = 100
+            limit = max(1, min(limit, 500))
+            self.send_json_api(200, login_audit_report(limit))
             return
         if parsed.path == "/api/validate":
             self.rest_validate_token()
@@ -2660,11 +2813,14 @@ class VulnerableSoapDastHandler(SoapDastHandler):
         if parsed.path == "/report":
             self.render_login_tracking_report(parsed)
             return
+        if parsed.path == "/login-audit":
+            self.render_login_audit_report(parsed)
+            return
         if parsed.path == "/":
             self.send_json_api(
                 200,
                 {
-                    "name": "Vulnerable SOAP DAST Lab",
+                    "name": "SOAP and REST DAST Lab",
                     "soap": "/soap",
                     "soap_auth": "/soap/auth",
                     "soap_refresh_token": "/soap/refreshtoken",
@@ -2694,8 +2850,9 @@ class VulnerableSoapDastHandler(SoapDastHandler):
                     "verbs": "/verbs",
                     "audit": "/audit",
                     "login_tracking": "/login-tracking",
+                    "login_audit": "/login-audit",
                     "executive_report": "/report",
-                    "vulnerabilities": [
+                    "risk_signals": [
                         "jwt_alg_none",
                         "jwt_signature_bypass",
                         "idor",
@@ -2710,7 +2867,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
             )
             return
         if parsed.path == "/soap" and "wsdl" in parse_qs(parsed.query, keep_blank_values=True):
-            self.send_body(200, VULNERABLE_WSDL)
+            self.send_body(200, LAB_WSDL)
             return
         super().do_GET()
 
@@ -2721,6 +2878,9 @@ class VulnerableSoapDastHandler(SoapDastHandler):
             return
         if parsed.path == "/api/refresh":
             self.rest_refresh_token()
+            return
+        if parsed.path == "/api/logout":
+            self.rest_logout()
             return
         if parsed.path == "/api/products":
             override_method = self.headers.get("X-HTTP-Method-Override", "").upper()
@@ -2744,7 +2904,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
         requested_action = self.headers.get("SOAPAction", "").strip('"')
         self.log_interaction_event("soap_request_received", action=requested_action, request_body=raw_body)
         if "<!DOCTYPE" in raw_body.upper() or "<!ENTITY" in raw_body.upper():
-            # Vulnerability signal: this deliberately acknowledges dangerous XML features
+            # SecurityNote signal: this deliberately acknowledges dangerous XML features
             # instead of rejecting them before parsing.
             self.send_body(
                 200,
@@ -2752,7 +2912,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
                     "XmlEntityProbe",
                     {
                         "Status": "doctype_seen",
-                        "Note": "Vulnerable mode accepted a payload containing DOCTYPE/ENTITY markers.",
+                        "Note": "Test mode accepted a payload containing DOCTYPE/ENTITY markers.",
                         "Echo": raw_body[:500],
                     },
                 ),
@@ -2762,7 +2922,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
         try:
             root = ElementTree.fromstring(raw_body)
         except ElementTree.ParseError as exc:
-            # Vulnerability: returns parser detail and reflected body fragment.
+            # SecurityNote: returns parser detail and reflected body fragment.
             self.send_body(
                 400,
                 unsafe_response_element(
@@ -2777,7 +2937,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
         if parsed.path == "/soap" and action in {"Login", "RefreshToken", "ValidateToken"}:
             required_path = "/soap/refreshtoken" if action == "RefreshToken" else "/soap/auth"
             self.log_auth_event(
-                "vulnerable_soap_auth_wrong_route",
+                "lab_soap_auth_wrong_route",
                 "failure",
                 error="auth_route_required",
                 details={"soap_action": action, "required_path": required_path},
@@ -2792,7 +2952,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
             return
         if parsed.path == "/soap/auth" and action == "RefreshToken":
             self.log_auth_event(
-                "vulnerable_soap_refresh_wrong_route",
+                "lab_soap_refresh_wrong_route",
                 "failure",
                 error="refresh_route_required",
                 details={"soap_action": action, "required_path": "/soap/refreshtoken"},
@@ -2807,7 +2967,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
             return
         if parsed.path == "/soap/auth" and action not in {"Login", "ValidateToken"}:
             self.log_auth_event(
-                "vulnerable_soap_auth_route_rejected",
+                "lab_soap_auth_route_rejected",
                 "failure",
                 error="unsupported_auth_action",
                 details={"soap_action": action, "allowed_actions": ["Login", "ValidateToken"]},
@@ -2822,7 +2982,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
             return
         if parsed.path == "/soap/refreshtoken" and action != "RefreshToken":
             self.log_auth_event(
-                "vulnerable_soap_refresh_route_rejected",
+                "lab_soap_refresh_route_rejected",
                 "failure",
                 error="unsupported_refresh_action",
                 details={"soap_action": action, "allowed_actions": ["RefreshToken"]},
@@ -2890,7 +3050,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
         user = USERS.get(username)
         if not user or user["password"] != password:
             self.log_auth_event(
-                "vulnerable_rest_login",
+                "lab_rest_login",
                 "failure",
                 username=username,
                 error="invalid_credentials",
@@ -2906,7 +3066,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
             session_id = fixed_session
         refresh_record = get_refresh_token_record(refresh_token) or {}
         self.log_auth_event(
-            "vulnerable_rest_login",
+            "lab_rest_login",
             "success",
             username=username,
             role=user["role"],
@@ -2931,7 +3091,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
                 "sessionId": session_id,
                 "expiresAt": claims["exp"],
                 "tokenId": claims["jti"],
-                "vulnerableMode": True,
+                "testMode": True,
             },
             headers={"Set-Cookie": f"DASTSESSION={session_id}; Path=/"},
         )
@@ -2947,7 +3107,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
         record = get_refresh_token_record(refresh_token)
         if not record:
             self.log_auth_event(
-                "vulnerable_rest_refresh_token",
+                "lab_rest_refresh_token",
                 "failure",
                 error="refresh_token_not_found",
                 details={
@@ -2959,7 +3119,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
             return
         if int(time.time()) >= int(record.get("expires_at", 0)):
             self.log_auth_event(
-                "vulnerable_rest_refresh_token",
+                "lab_rest_refresh_token",
                 "failure",
                 error="refresh_token_expired",
                 username=record.get("username"),
@@ -2975,7 +3135,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
         user = USERS[record["username"]]
         access_token, claims = make_jwt(record["username"], user["role"], record["session_id"])
         self.log_auth_event(
-            "vulnerable_rest_refresh_token",
+            "lab_rest_refresh_token",
             "success",
             username=record["username"],
             role=user["role"],
@@ -2987,7 +3147,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
                 "new_access_token_expires_at": claims["exp"],
                 "refresh_token_expires_at": record.get("expires_at"),
                 "refresh_rotated": False,
-                "vulnerability": "refresh_token_reuse_allowed",
+                "security_note": "refresh_token_reuse_allowed",
                 "duration_ms": round((time.perf_counter() - started_at) * 1000, 2),
             },
         )
@@ -3000,7 +3160,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
                 "expiresAt": claims["exp"],
                 "tokenId": claims["jti"],
                 "rotated": False,
-                "vulnerability": "refresh token reuse allowed",
+                "security_note": "refresh token reuse allowed",
             },
         )
 
@@ -3017,7 +3177,43 @@ class VulnerableSoapDastHandler(SoapDastHandler):
                 "sessionId": payload.get("sid"),
                 "tokenId": payload.get("jti"),
                 "expiresAt": payload.get("exp"),
-                "vulnerability": "signature and session binding may be bypassed",
+                "security_note": "signature and session binding may be bypassed",
+            },
+        )
+
+    def rest_logout(self):
+        try:
+            data = self.read_json_api_body()
+        except json.JSONDecodeError as exc:
+            self.send_json_api(400, {"error": "invalid_json", "parser_error": str(exc)})
+            return
+        refresh_token = str(data.get("refreshToken") or data.get("refresh_token") or "")
+        payload, error = self.require_auth()
+        if error:
+            self.log_auth_event("rest_logout", "failure", error=error)
+            self.send_json_api(401, {"error": error})
+            return
+        session = get_session(payload["sid"])
+        delete_session(payload["sid"])
+        if refresh_token:
+            set_refresh_token_active(refresh_token, False)
+        self.log_auth_event(
+            "rest_logout",
+            "success",
+            username=payload.get("sub"),
+            role=payload.get("role"),
+            session_id=payload.get("sid"),
+            token_id=payload.get("jti"),
+            details={
+                "session_removed": session is not None,
+                "refresh_token_fingerprint": token_fingerprint(refresh_token),
+            },
+        )
+        self.send_json_api(
+            200,
+            {
+                "status": "logged_out",
+                "sessionRemoved": session is not None,
             },
         )
 
@@ -3086,7 +3282,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
                 "count": len(products),
                 "products": products,
                 "query": {key: values[0] if values else "" for key, values in query.items()},
-                "vulnerableSql": vulnerable_catalog_sql(category, query),
+                "labSql": lab_catalog_sql(category, query),
                 "sqlInjectionAccepted": injected,
                 "warning": "Intentional lab behavior: query parameters are concatenated into a simulated SQL statement.",
             },
@@ -3111,7 +3307,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
                     "count": len(products),
                     "products": products,
                     "query": {key: values[0] if values else "" for key, values in query.items()},
-                    "vulnerableSql": vulnerable_catalog_sql(category, query),
+                    "labSql": lab_catalog_sql(category, query),
                     "sqlInjectionAccepted": injected,
                     "warning": "Intentional lab behavior: query parameters are concatenated into a simulated SQL statement.",
                 },
@@ -3185,10 +3381,10 @@ class VulnerableSoapDastHandler(SoapDastHandler):
         def business_label(event):
             name = str(event.get("event", ""))
             labels = {
-                "vulnerable_login": "Login",
-                "vulnerable_refresh_token": "Refresh token",
-                "vulnerable_validate_token": "Token validation",
-                "vulnerable_access_token_validation": "Route access",
+                "lab_login": "Login",
+                "lab_refresh_token": "Refresh token",
+                "lab_validate_token": "Token validation",
+                "lab_access_token_validation": "Route access",
                 "soap_request_received": "SOAP request",
                 "response_sent": "Response",
             }
@@ -3202,7 +3398,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
             for key in (
                 "duration_ms",
                 "refresh_token_source",
-                "vulnerability",
+                "security_note",
                 "refresh_rotated",
                 "access_token_ttl_seconds",
                 "refresh_token_ttl_seconds",
@@ -3317,6 +3513,170 @@ class VulnerableSoapDastHandler(SoapDastHandler):
 </html>"""
         self.send_html(200, page, headers={"X-Report-Source": "/login-tracking"})
 
+    def render_login_audit_report(self, parsed):
+        query = parse_qs(parsed.query, keep_blank_values=True)
+        try:
+            limit = int(query.get("limit", ["100"])[0])
+        except ValueError:
+            limit = 100
+        limit = max(1, min(limit, 500))
+        report = login_audit_report(limit)
+        summary = report["summary"]
+        events = report["events"]
+
+        def esc(value):
+            return html.escape("" if value is None else str(value), quote=True)
+
+        def status_class(event):
+            status = str(event.get("status", "")).lower()
+            http_status = int(event.get("http_status") or 0)
+            if status == "success" or 200 <= http_status < 300:
+                return "ok"
+            if status == "failure" or http_status >= 400:
+                return "bad"
+            return "warn"
+
+        def business_label(event):
+            name = str(event.get("event", ""))
+            labels = {
+                "lab_login": "Login",
+                "lab_rest_login": "REST login",
+                "lab_refresh_token": "Re-login refresh token",
+                "lab_rest_refresh_token": "REST re-login refresh token",
+                "logout": "Logout",
+                "rest_logout": "REST logout",
+                "soap_request_received": "SOAP request",
+                "request_body_received": "REST request",
+                "response_sent": "Response",
+            }
+            return labels.get(name, name.replace("_", " ").title())
+
+        def detail_text(event):
+            details = event.get("details")
+            if not isinstance(details, dict):
+                return ""
+            interesting = []
+            for key in (
+                "duration_ms",
+                "refresh_token_source",
+                "access_token_fingerprint",
+                "refresh_token_fingerprint",
+                "new_access_token_fingerprint",
+                "refresh_rotated",
+                "access_token_ttl_seconds",
+                "refresh_token_ttl_seconds",
+                "security_note",
+                "risk_signal",
+                "test_mode",
+            ):
+                if key in details:
+                    interesting.append(f"{key}: {details[key]}")
+            return "; ".join(interesting)
+
+        cards = [
+            ("Login success", summary["login_success"]),
+            ("Login failures", summary["login_failure"]),
+            ("Refresh success", summary["refresh_success"]),
+            ("Refresh failures", summary["refresh_failure"]),
+            ("Logout success", summary["logout_success"]),
+            ("Logout failures", summary["logout_failure"]),
+        ]
+        card_html = "\n".join(
+            f"<section class=\"metric\"><span>{esc(label)}</span><strong>{esc(value)}</strong></section>"
+            for label, value in cards
+        )
+        rows = []
+        for event in reversed(events):
+            css = status_class(event)
+            request_body = event.get("raw_request_body") or event.get("request_body") or event.get("request_body_preview", "")
+            response_body = event.get("raw_response_body") or event.get("response_body") or event.get("response_body_preview", "")
+            if not request_body and int(event.get("request_body_length") or 0) == 0:
+                request_body = "[no request body captured]"
+            if not response_body and int(event.get("response_body_length") or 0) == 0:
+                response_body = "[no response body captured]"
+            rows.append(
+                "<tr>"
+                f"<td><span class=\"pill {css}\">{esc(event.get('status') or event.get('http_status') or 'observed')}</span></td>"
+                f"<td>{esc(event.get('local_time'))}</td>"
+                f"<td>{esc(business_label(event))}</td>"
+                f"<td>{esc(event.get('username', ''))}</td>"
+                f"<td>{esc(event.get('role', ''))}</td>"
+                f"<td>{esc(event.get('http_status', ''))}</td>"
+                f"<td>{esc(event.get('method', ''))} {esc(event.get('path', ''))}</td>"
+                f"<td>{esc(event.get('client', ''))}</td>"
+                f"<td>{esc(event.get('destination', ''))}</td>"
+                f"<td>{esc(event.get('x_forwarded_for', ''))}</td>"
+                f"<td class=\"ua\">{esc(event.get('user_agent', ''))}</td>"
+                f"<td>{esc(event.get('error', ''))}</td>"
+                f"<td class=\"details\">{esc(detail_text(event))}</td>"
+                f"<td class=\"body-preview\"><pre>{esc(request_body)}</pre></td>"
+                f"<td class=\"body-preview\"><pre>{esc(response_body)}</pre></td>"
+                "</tr>"
+            )
+        rows_html = "\n".join(rows) or "<tr><td colspan=\"15\">No login audit events have been recorded yet.</td></tr>"
+        generated_at = local_time_fields(now())["local_time"]
+        page = f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Login Audit Report</title>
+  <style>
+    :root {{ --ink:#17202a; --muted:#617080; --line:#d8dee6; --ok:#137333; --bad:#b3261e; --warn:#8a5a00; --bg:#f6f8fb; }}
+    body {{ margin:0; font-family: Arial, Helvetica, sans-serif; color:var(--ink); background:var(--bg); }}
+    header {{ background:#fff; border-bottom:1px solid var(--line); padding:24px 32px; }}
+    main {{ padding:24px 32px 40px; }}
+    h1 {{ margin:0 0 8px; font-size:28px; letter-spacing:0; }}
+    h2 {{ margin:28px 0 12px; font-size:20px; }}
+    p {{ margin:6px 0; color:var(--muted); }}
+    .metrics {{ display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:12px; margin-top:18px; }}
+    .metric {{ background:#fff; border:1px solid var(--line); border-radius:8px; padding:14px; }}
+    .metric span {{ display:block; color:var(--muted); font-size:13px; }}
+    .metric strong {{ display:block; font-size:26px; margin-top:6px; }}
+    .note {{ background:#fff; border-left:4px solid #2b6cb0; padding:14px 16px; margin:18px 0; }}
+    .toolbar {{ display:flex; gap:10px; align-items:center; margin:18px 0; flex-wrap:wrap; }}
+    .toolbar a {{ color:#0645ad; text-decoration:none; font-weight:700; }}
+    .table-wrap {{ overflow:auto; max-height:70vh; border:1px solid var(--line); }}
+    table {{ width:100%; border-collapse:collapse; background:#fff; table-layout:fixed; }}
+    th, td {{ border-bottom:1px solid var(--line); padding:10px; text-align:left; vertical-align:top; font-size:13px; overflow-wrap:anywhere; }}
+    th {{ background:#eef2f7; color:#334155; position:sticky; top:0; }}
+    .pill {{ display:inline-block; border-radius:999px; padding:4px 8px; color:#fff; font-size:12px; font-weight:700; }}
+    .pill.ok {{ background:var(--ok); }}
+    .pill.bad {{ background:var(--bad); }}
+    .pill.warn {{ background:var(--warn); }}
+    .ua, .details {{ color:#3d4b5c; font-size:12px; }}
+    .body-preview pre {{ margin:0; max-height:420px; min-width:360px; overflow:auto; white-space:pre-wrap; font-family: Consolas, Monaco, monospace; font-size:12px; line-height:1.35; color:#2d3748; }}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Login Audit Report</h1>
+    <p>Focused view for login, re-login through refresh token, and logout. Generated at {esc(generated_at)}.</p>
+  </header>
+  <main>
+    <section class="metrics">{card_html}</section>
+    <section class="note"><strong>Audit scope:</strong> request and response bodies are shown in full for login evidence, including username/password test payloads, JWT access tokens, and refresh tokens.</section>
+    <div class="toolbar">
+      <span>Showing the latest {esc(summary["returned_events"])} of {esc(summary["total_events"])} matching events.</span>
+      <a href="/api/login-audit?limit={limit}">Technical JSON</a>
+      <a href="/login-audit?limit=250">Show 250</a>
+      <a href="/report?limit={limit}">Full report</a>
+    </div>
+    <h2>Login Timeline</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Result</th><th>Local time</th><th>Event</th><th>User</th><th>Role</th><th>HTTP</th><th>Route</th><th>Source IP</th><th>Destination</th><th>X-Forwarded-For</th><th>User-Agent</th><th>Error</th><th>Notes</th><th>Request Body</th><th>Response Body</th>
+          </tr>
+        </thead>
+        <tbody>{rows_html}</tbody>
+      </table>
+    </div>
+  </main>
+</body>
+</html>"""
+        self.send_html(200, page, headers={"X-Report-Source": "/login-audit"})
+
     def render_comments_form(self, parsed):
         query = parse_qs(parsed.query, keep_blank_values=True)
         reflected = query.get("preview", [""])[0]
@@ -3328,7 +3688,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Vulnerable Comment Lab</title>
+  <title>Comment Lab</title>
   <style>
     body {{ font-family: Arial, sans-serif; margin: 32px; max-width: 920px; }}
     label {{ display: block; margin-top: 12px; font-weight: 700; }}
@@ -3339,14 +3699,14 @@ class VulnerableSoapDastHandler(SoapDastHandler):
   </style>
 </head>
 <body>
-  <h1>Vulnerable Comment Lab</h1>
+  <h1>Comment Lab</h1>
   <nav>
     <a href="/products/eletronico?q=camera">eletronico</a> |
     <a href="/products/smarphone?q=5G">smarphone</a> |
     <a href="/products/laptops?promotion=yes">laptops</a> |
     <a href="/products/books?q=SQL">books</a>
   </nav>
-  <p>This page is intentionally vulnerable to stored and reflected XSS for authorized DAST testing.</p>
+  <p>This page is intentionally testable to stored and reflected XSS for authorized DAST testing.</p>
   <section class="preview">Preview: {reflected}</section>
   <form method="POST" action="/comments">
     <label>Name</label>
@@ -3460,20 +3820,20 @@ class VulnerableSoapDastHandler(SoapDastHandler):
     def require_auth(self):
         token = self.bearer_token() or self.headers.get("X-Session-Token", "")
         if not token:
-            self.log_auth_event("vulnerable_access_token_missing", "failure", error="missing_bearer_token")
+            self.log_auth_event("lab_access_token_missing", "failure", error="missing_bearer_token")
             return None, "missing_bearer_token"
         payload, error = insecure_verify_jwt(token)
         if error:
             self.log_auth_event(
-                "vulnerable_access_token_validation",
+                "lab_access_token_validation",
                 "failure",
                 error=error,
                 details={"access_token_fingerprint": token_fingerprint(token)},
             )
             return None, error
-        # Vulnerability: cookie/session binding is not enforced.
+        # SecurityNote: cookie/session binding is not enforced.
         self.log_auth_event(
-            "vulnerable_access_token_validation",
+            "lab_access_token_validation",
             "success",
             username=payload.get("sub"),
             role=payload.get("role"),
@@ -3494,7 +3854,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
         user = USERS.get(username)
         if not user or user["password"] != password:
             self.log_auth_event(
-                "vulnerable_login",
+                "lab_login",
                 "failure",
                 username=username,
                 error="invalid_credentials",
@@ -3506,13 +3866,13 @@ class VulnerableSoapDastHandler(SoapDastHandler):
         access_token, refresh_token, session_id, claims = issue_tokens(username)
         fixed_session = self.headers.get("X-Fixed-Session-Id")
         if fixed_session:
-            # Vulnerability: session fixation through attacker-supplied session id.
+            # SecurityNote: session fixation through attacker-supplied session id.
             update_session_id(session_id, fixed_session)
             access_token, claims = make_jwt(username, user["role"], fixed_session)
             session_id = fixed_session
         refresh_record = get_refresh_token_record(refresh_token) or {}
         self.log_auth_event(
-            "vulnerable_login",
+            "lab_login",
             "success",
             username=username,
             role=user["role"],
@@ -3532,7 +3892,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
         )
 
         headers = {
-            # Vulnerability: intentionally omits HttpOnly/SameSite attributes.
+            # SecurityNote: intentionally omits HttpOnly/SameSite attributes.
             "Set-Cookie": f"DASTSESSION={session_id}; Path=/"
         }
         self.send_body(
@@ -3545,7 +3905,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
                     "SessionId": session_id,
                     "ExpiresAt": claims["exp"],
                     "TokenId": claims["jti"],
-                    "VulnerableMode": "true",
+                    "TestMode": "true",
                 },
             ),
             headers=headers,
@@ -3611,7 +3971,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
                     continue
                 if entry.get("status") != "success":
                     continue
-                if entry.get("event") not in {"vulnerable_login", "login"}:
+                if entry.get("event") not in {"lab_login", "login"}:
                     continue
                 if now() - int(entry.get("time", 0)) > 900:
                     continue
@@ -3626,7 +3986,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
                     break
         if not record:
             self.log_auth_event(
-                "vulnerable_refresh_token",
+                "lab_refresh_token",
                 "failure",
                 error="refresh_token_not_found",
                 details={
@@ -3640,7 +4000,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
             return
         if int(time.time()) >= int(record.get("expires_at", 0)):
             self.log_auth_event(
-                "vulnerable_refresh_token",
+                "lab_refresh_token",
                 "failure",
                 error="refresh_token_expired",
                 username=record.get("username"),
@@ -3655,11 +4015,11 @@ class VulnerableSoapDastHandler(SoapDastHandler):
             self.send_body(401, soap_fault("Auth.RefreshFailed", "refresh_token_expired"))
             return
 
-        # Vulnerability: refresh token is reusable and not rotated.
+        # SecurityNote: refresh token is reusable and not rotated.
         user = USERS[record["username"]]
         access_token, claims = make_jwt(record["username"], user["role"], record["session_id"])
         self.log_auth_event(
-            "vulnerable_refresh_token",
+            "lab_refresh_token",
             "success",
             username=record["username"],
             role=user["role"],
@@ -3672,7 +4032,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
                 "new_access_token_expires_at": claims["exp"],
                 "refresh_token_expires_at": record.get("expires_at"),
                 "refresh_rotated": False,
-                "vulnerability": "refresh_token_reuse_allowed",
+                "security_note": "refresh_token_reuse_allowed",
                 "duration_ms": round((time.perf_counter() - started_at) * 1000, 2),
             },
         )
@@ -3687,7 +4047,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
                     "ExpiresAt": claims["exp"],
                     "TokenId": claims["jti"],
                     "Rotated": "false",
-                    "Vulnerability": "refresh token reuse allowed",
+                    "SecurityNote": "refresh token reuse allowed",
                 },
             ),
         )
@@ -3695,11 +4055,11 @@ class VulnerableSoapDastHandler(SoapDastHandler):
     def soap_validate_token(self, root):
         payload, error = self.require_auth()
         if error:
-            self.log_auth_event("vulnerable_validate_token", "failure", error=error)
+            self.log_auth_event("lab_validate_token", "failure", error=error)
             self.send_body(401, soap_fault("Auth.TokenInvalid", error))
             return
         self.log_auth_event(
-            "vulnerable_validate_token",
+            "lab_validate_token",
             "success",
             username=payload.get("sub"),
             role=payload.get("role"),
@@ -3716,7 +4076,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
                     "SessionId": payload.get("sid", ""),
                     "TokenId": payload.get("jti", ""),
                     "ExpiresAt": payload.get("exp", ""),
-                    "Vulnerability": "signature and session binding may be bypassed",
+                    "SecurityNote": "signature and session binding may be bypassed",
                 },
             ),
         )
@@ -3732,7 +4092,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
             payload.get("sub", "unknown"),
         )
         balance = USERS.get(owner, {}).get("balance", "unknown")
-        # Vulnerability: IDOR. Any authenticated caller can request any account id.
+        # SecurityNote: IDOR. Any authenticated caller can request any account id.
         self.send_body(
             200,
             unsafe_response_element(
@@ -3742,7 +4102,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
                     "Owner": owner,
                     "Balance": balance,
                     "RequestedBy": payload.get("sub", ""),
-                    "Vulnerability": "idor_account_access",
+                    "SecurityNote": "idor_account_access",
                 },
             ),
         )
@@ -3762,14 +4122,14 @@ class VulnerableSoapDastHandler(SoapDastHandler):
                     "Query": query,
                     "Matches": ",".join(matches),
                     "FuzzEcho": query,
-                    "Vulnerability": "unsafe_reflection_without_xml_escape",
+                    "SecurityNote": "unsafe_reflection_without_xml_escape",
                 },
             ),
         )
 
 
 def main():
-    httpd = ThreadingHTTPServer((HOST, PORT), VulnerableSoapDastHandler)
+    httpd = ThreadingHTTPServer((HOST, PORT), ApiServerTestHandler)
     print(f"API Server Test running at http://{HOST}:{PORT}")
     print(f"WSDL available at http://{HOST}:{PORT}/soap?wsdl")
     httpd.serve_forever()

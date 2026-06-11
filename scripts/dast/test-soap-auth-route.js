@@ -90,10 +90,10 @@ async function main() {
   const audit = await fetch(`${baseUrl}/audit`);
   const auditText = await audit.text();
   console.log(`GET /audit: HTTP ${audit.status}`);
-  if (!auditText.includes("vulnerable_login") && !auditText.includes("login")) {
+  if (!auditText.includes("lab_login") && !auditText.includes("login")) {
     throw new Error("Audit log does not include login events.");
   }
-  if (!auditText.includes("vulnerable_refresh_token") && !auditText.includes("refresh_token")) {
+  if (!auditText.includes("lab_refresh_token") && !auditText.includes("refresh_token")) {
     throw new Error("Audit log does not include refresh token events.");
   }
   if (!auditText.includes("interaction")) {

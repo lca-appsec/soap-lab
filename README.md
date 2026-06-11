@@ -1,10 +1,10 @@
-# Vulnerable SOAP and REST DAST Lab
+# SOAP and REST DAST Lab
 
 ## English
 
 ### Purpose
 
-This repository is an intentionally vulnerable security lab for demonstrating attacks against SOAP/XML APIs and REST/JSON APIs in an authorized environment.
+This repository is an intentionally testable security lab for demonstrating attacks against SOAP/XML APIs and REST/JSON APIs in an authorized environment.
 
 The application runs on one port:
 
@@ -46,13 +46,13 @@ DAST authentication scripts and validation helpers:
 
 ### Intentional Vulnerabilities
 
-This lab is vulnerable on purpose:
+This lab is configured for authorized security testing:
 
 - JWT `alg=none` acceptance
 - JWT signature bypass
 - Refresh token reuse
 - Session fixation with `X-Fixed-Session-Id`
-- Missing secure cookie attributes in vulnerable mode
+- Missing secure cookie attributes in test mode
 - IDOR on account access
 - Unsafe XML reflection
 - `DOCTYPE` / `ENTITY` acceptance signal
@@ -66,11 +66,11 @@ Run this only in environments you own or are authorized to test.
 
 ### Files
 
-- `api-server-test.py`: standalone vulnerable REST/JSON and SOAP/XML application
+- `api-server-test.py`: standalone REST/JSON and SOAP/XML application
 - `Dockerfile`: container image
-- `docker-compose.yml`: local vulnerable app on port `8089`
+- `docker-compose.yml`: local app on port `8089`
 - `requests.http`: SOAP examples
-- `vulnerable-requests.http`: vulnerable SOAP examples
+- `soap-requests.http`: SOAP examples
 - `admin-user-requests.http`: XML product route examples
 - `rest-json-requests.http`: REST JSON examples
 - `openapi/rest-openapi.json`: static OpenAPI file for REST JSON import
@@ -191,7 +191,7 @@ curl -s 'http://127.0.0.1:8089/api/validate' \
   -H 'Authorization: Bearer YOUR_ACCESS_TOKEN'
 ```
 
-In vulnerable mode, JWT signature validation is intentionally weak.
+In test mode, JWT signature validation is intentionally weak.
 
 ### REST: Refresh Token
 
@@ -205,7 +205,7 @@ curl -s -X POST 'http://127.0.0.1:8089/api/refresh' \
   --data '{"refreshToken":"YOUR_REFRESH_TOKEN"}'
 ```
 
-Important vulnerable behavior:
+Important lab behavior:
 
 - The refresh token is reusable.
 - The refresh token is not rotated.
@@ -400,7 +400,7 @@ curl -s -X POST 'http://127.0.0.1:8089/soap/refreshtoken' \
 </soap:Envelope>'
 ```
 
-In vulnerable mode:
+In test mode:
 
 - `Rotated` is `false`
 - The same refresh token is returned
@@ -442,7 +442,7 @@ Some DAST tools wrap XML request examples as an escaped string, for example:
 <?xml version='1.1' encoding='UTF-8'?><String>&lt;product&gt;&lt;sku&gt;SKU-900&lt;/sku&gt;&lt;name&gt;Scanner Lab Device&lt;/name&gt;&lt;price&gt;199.90&lt;/price&gt;&lt;stock&gt;7&lt;/stock&gt;&lt;/product&gt;</String>
 ```
 
-The vulnerable app accepts both the direct `<product>` body and this scanner-style `<String>` wrapper.
+The lab app accepts both the direct `<product>` body and this scanner-style `<String>` wrapper.
 
 ### SOAP/XML: Admin Edit Product With PUSH
 
@@ -531,7 +531,7 @@ Login -> Access token + Refresh token
 Use access token as Bearer token
 Access token expires after 2 minutes; refresh token remains valid for 15 minutes
 Use refresh token to get a new dynamic JWT
-In vulnerable mode, the same refresh token can be reused
+In test mode, the same refresh token can be reused
 ```
 
 JWT dynamic fields:
@@ -618,7 +618,7 @@ The repository includes:
 - `deploy/aws/ecs-task-definition.json`
 - `deploy/aws/create-ecs-fargate.sh`
 
-The ECS task exposes the vulnerable app on container port `8089`.
+The ECS task exposes the lab app on container port `8089`.
 
 High-level flow:
 
@@ -649,7 +649,7 @@ http://YOUR_ECS_ENDPOINT:8089/soap?wsdl
 The repository includes:
 
 - `deploy/azure/create-container-apps.sh`
-- `deploy/azure/container-app-vulnerable.yaml`
+- `deploy/azure/container-app-api-server-test.yaml`
 
 High-level flow:
 
@@ -706,7 +706,7 @@ https://YOUR_CONTAINER_APP_FQDN/soap?wsdl
 
 ### Objetivo
 
-Este repositorio e um laboratorio de seguranca vulneravel de proposito para demonstrar ataques contra APIs SOAP/XML e REST/JSON em ambiente autorizado.
+Este repositorio e um laboratorio de seguranca para testes autorizados para demonstrar ataques contra APIs SOAP/XML e REST/JSON em ambiente autorizado.
 
 A aplicacao roda em uma porta:
 
@@ -748,13 +748,13 @@ Scripts de autenticacao DAST e validadores:
 
 ### Vulnerabilidades Intencionais
 
-Este laboratorio e vulneravel de proposito:
+Este laboratorio foi configurado para testes autorizados:
 
 - Aceita JWT `alg=none`
 - Bypass de assinatura JWT
 - Reuso de refresh token
 - Session fixation com `X-Fixed-Session-Id`
-- Cookie sem atributos seguros no modo vulneravel
+- Cookie sem atributos seguros no modo de teste
 - IDOR no acesso de contas
 - Reflexao XML insegura
 - Sinal positivo para `DOCTYPE` / `ENTITY`
@@ -768,11 +768,11 @@ Rode apenas em ambientes seus ou onde voce tem autorizacao para testar.
 
 ### Arquivos
 
-- `api-server-test.py`: aplicacao vulneravel standalone REST/JSON e SOAP/XML
+- `api-server-test.py`: aplicacao de teste standalone REST/JSON e SOAP/XML
 - `Dockerfile`: imagem do container
-- `docker-compose.yml`: aplicacao vulneravel local na porta `8089`
+- `docker-compose.yml`: aplicacao de teste local na porta `8089`
 - `requests.http`: exemplos SOAP
-- `vulnerable-requests.http`: exemplos SOAP vulneraveis
+- `soap-requests.http`: exemplos SOAP
 - `admin-user-requests.http`: exemplos XML de produtos
 - `rest-json-requests.http`: exemplos REST JSON
 - `openapi/rest-openapi.json`: arquivo OpenAPI estatico para importar REST JSON
@@ -893,7 +893,7 @@ curl -s 'http://127.0.0.1:8089/api/validate' \
   -H 'Authorization: Bearer YOUR_ACCESS_TOKEN'
 ```
 
-No modo vulneravel, a validacao de assinatura JWT e fraca de proposito.
+No modo de teste, a validacao de assinatura JWT e fraca de proposito.
 
 ### REST: Refresh Token
 
@@ -907,7 +907,7 @@ curl -s -X POST 'http://127.0.0.1:8089/api/refresh' \
   --data '{"refreshToken":"YOUR_REFRESH_TOKEN"}'
 ```
 
-Comportamento vulneravel importante:
+Comportamento importante do laboratorio:
 
 - O refresh token e reutilizavel.
 - O refresh token nao e rotacionado.
@@ -1102,7 +1102,7 @@ curl -s -X POST 'http://127.0.0.1:8089/soap/refreshtoken' \
 </soap:Envelope>'
 ```
 
-No modo vulneravel:
+No modo de teste:
 
 - `Rotated` e `false`
 - O mesmo refresh token e retornado
@@ -1144,7 +1144,7 @@ Algumas ferramentas DAST embrulham o XML do exemplo como uma string escapada, po
 <?xml version='1.1' encoding='UTF-8'?><String>&lt;product&gt;&lt;sku&gt;SKU-900&lt;/sku&gt;&lt;name&gt;Scanner Lab Device&lt;/name&gt;&lt;price&gt;199.90&lt;/price&gt;&lt;stock&gt;7&lt;/stock&gt;&lt;/product&gt;</String>
 ```
 
-A aplicacao vulneravel aceita tanto o corpo direto `<product>` quanto esse wrapper `<String>` usado por scanners.
+A aplicacao de teste aceita tanto o corpo direto `<product>` quanto esse wrapper `<String>` usado por scanners.
 
 ### SOAP/XML: Admin Edita Produto Com PUSH
 
@@ -1233,7 +1233,7 @@ Login -> Access token + Refresh token
 Usa access token como Bearer token
 Access token expira depois de 2 minutos; refresh token continua valido por 15 minutos
 Usa refresh token para pegar novo JWT dinamico
-No modo vulneravel, o mesmo refresh token pode ser reutilizado
+No modo de teste, o mesmo refresh token pode ser reutilizado
 ```
 
 Campos dinamicos do JWT:
@@ -1320,7 +1320,7 @@ O repositorio inclui:
 - `deploy/aws/ecs-task-definition.json`
 - `deploy/aws/create-ecs-fargate.sh`
 
-O task ECS expoe a aplicacao vulneravel na porta de container `8089`.
+O task ECS expoe a aplicacao de teste na porta de container `8089`.
 
 Fluxo geral:
 
@@ -1351,7 +1351,7 @@ http://YOUR_ECS_ENDPOINT:8089/soap?wsdl
 O repositorio inclui:
 
 - `deploy/azure/create-container-apps.sh`
-- `deploy/azure/container-app-vulnerable.yaml`
+- `deploy/azure/container-app-api-server-test.yaml`
 
 Fluxo geral:
 
