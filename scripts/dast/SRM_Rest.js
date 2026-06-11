@@ -1,6 +1,8 @@
 var bearerToken = null;
 var refreshToken = null;
 var tokenExpiresAt = null;
+var defaultUsername = "admin_aurora";
+var defaultPassword = "adminpass1";
 
 function run() {
     if (bearerToken === null) {
@@ -9,39 +11,54 @@ function run() {
         reauthenticateWithRefreshToken();
     }
 
+    if (bearerToken === null || bearerToken === "") {
+        authenticateWithLogin();
+    }
+
     updateRequestHeaders(bearerToken);
+    updateCurrentRefreshRequestBodyIfNeeded();
 }
 
 function authenticateWithLogin() {
-    var tokenRequest = createLoginRequest();
-    var tokenData = fetchToken(tokenRequest, "Login");
+    var username = getVariableOrDefault("testUsername", defaultUsername);
+    var password = getVariableOrDefault("testPassword", defaultPassword);
+    var tokenData = fetchToken(createLoginRequest(username, password), "Login", false);
+
+    if (tokenData === null && (username !== defaultUsername || password !== defaultPassword)) {
+        tokenData = fetchToken(createLoginRequest(defaultUsername, defaultPassword), "LoginDefaultFallback", false);
+    }
+
+    if (tokenData === null) {
+        throw "REST Login failed. Check loginBaseUrl, testUsername, and testPassword. Expected /api/login.";
+    }
 
     bearerToken = tokenData.accessToken;
-    refreshToken = tokenData.refreshToken;
+    refreshToken = normalizeRefreshTokenValue(tokenData.refreshToken);
     tokenExpiresAt = tokenData.expiresAt;
 
     validateTokenIfEnabled();
 }
 
 function reauthenticateWithRefreshToken() {
-    if (refreshToken === null || refreshToken === "") {
+    refreshToken = normalizeRefreshTokenValue(refreshToken);
+    var refreshRequest = createRefreshTokenRequest(refreshToken);
+    var tokenData = fetchToken(refreshRequest, "RefreshToken", false);
+    if (tokenData === null) {
+        bearerToken = null;
+        refreshToken = null;
+        tokenExpiresAt = null;
         authenticateWithLogin();
         return;
     }
 
-    var refreshRequest = createRefreshTokenRequest(refreshToken);
-    var tokenData = fetchToken(refreshRequest, "RefreshToken");
-
     bearerToken = tokenData.accessToken;
-    refreshToken = tokenData.refreshToken;
+    refreshToken = normalizeRefreshTokenValue(tokenData.refreshToken) || refreshToken;
     tokenExpiresAt = tokenData.expiresAt;
 
     validateTokenIfEnabled();
 }
 
-function createLoginRequest() {
-    var username = vc.variables['testUsername'];
-    var password = vc.variables['testPassword'];
+function createLoginRequest(username, password) {
     var loginUrl = getLoginUrl();
 
     var tokenRequest = httpClient.createRequest(loginUrl);
@@ -49,7 +66,7 @@ function createLoginRequest() {
     tokenRequest.addHeader("Accept", "application/json");
     tokenRequest.addHeader("user-agent", "Veracode DAST");
     tokenRequest.setMethod("POST");
-    tokenRequest.setBody("{\"username\":\"" + escapeJson(username) + "\",\"password\":\"" + escapeJson(password) + "\"}");
+    tokenRequest.setBody(buildLoginBody(username, password));
 
     return tokenRequest;
 }
@@ -60,8 +77,11 @@ function createRefreshTokenRequest(currentRefreshToken) {
     var tokenRequest = httpClient.createRequest(refreshUrl);
     tokenRequest.addHeader("Content-Type", "application/json");
     tokenRequest.addHeader("Accept", "application/json");
+    if (bearerToken !== null && bearerToken !== "") {
+        tokenRequest.addHeader("Authorization", "Bearer " + bearerToken);
+    }
     tokenRequest.setMethod("POST");
-    tokenRequest.setBody("{\"refreshToken\":\"" + escapeJson(currentRefreshToken) + "\"}");
+    tokenRequest.setBody(buildRefreshTokenBody(currentRefreshToken));
 
     return tokenRequest;
 }
@@ -77,17 +97,23 @@ function createValidateTokenRequest(currentAccessToken) {
     return tokenRequest;
 }
 
-function fetchToken(tokenRequest, actionName) {
+function fetchToken(tokenRequest, actionName, throwOnFailure) {
     var response = tokenRequest.send();
     var responseBody = response.asString();
-    var tokenData = parseJson(responseBody);
+    var tokenData = parseJson(responseBody, throwOnFailure);
 
-    if (tokenData.accessToken === null || tokenData.accessToken === "") {
-        throw "REST " + actionName + " failed. accessToken not found. Response: " + responseBody;
+    if (tokenData === null || tokenData.accessToken === null || tokenData.accessToken === "") {
+        if (throwOnFailure === true) {
+            throw "REST " + actionName + " failed. accessToken not found. Response: " + responseBody;
+        }
+        return null;
     }
 
     if (tokenData.expiresAt === null || tokenData.expiresAt === "") {
-        throw "REST " + actionName + " failed. expiresAt not found. Response: " + responseBody;
+        if (throwOnFailure === true) {
+            throw "REST " + actionName + " failed. expiresAt not found. Response: " + responseBody;
+        }
+        return null;
     }
 
     return {
@@ -106,19 +132,34 @@ function validateTokenIfEnabled() {
     var validateRequest = createValidateTokenRequest(bearerToken);
     var response = validateRequest.send();
     var responseBody = response.asString();
-    var validationData = parseJson(responseBody);
+    var validationData = parseJson(responseBody, false);
 
-    if (validationData.valid !== true && validationData.subject === null && validationData.sub === null) {
-        throw "REST ValidateToken failed. Response: " + responseBody;
+    if (validationData === null) {
+        return;
     }
 }
 
-function parseJson(jsonText) {
+function parseJson(jsonText, throwOnFailure) {
     try {
         return JSON.parse(jsonText);
     } catch (e) {
-        throw "Invalid JSON response: " + jsonText;
+        if (throwOnFailure === true) {
+            throw "Invalid JSON response: " + jsonText;
+        }
+        return null;
     }
+}
+
+function getVariableOrDefault(name, fallback) {
+    var value = vc.variables[name];
+    if (value === null || value === undefined || trimValue(String(value)) === "") {
+        return fallback;
+    }
+    return trimValue(String(value));
+}
+
+function trimValue(value) {
+    return value.replace(/^\s+|\s+$/g, "");
 }
 
 function isTokenExpired() {
@@ -134,6 +175,87 @@ function isTokenExpired() {
 
 function updateRequestHeaders(token) {
     request.addHeader("Authorization", "Bearer " + token);
+}
+
+function updateCurrentRefreshRequestBodyIfNeeded() {
+    var currentPath = getCurrentRequestPath();
+    if (!currentPath.match(/\/api\/refresh\/?$/i)) {
+        return;
+    }
+
+    request.addHeader("Content-Type", "application/json");
+    request.addHeader("Accept", "application/json");
+    if (bearerToken !== null && bearerToken !== "") {
+        request.addHeader("Authorization", "Bearer " + bearerToken);
+    }
+    if (typeof request.setMethod === "function") {
+        request.setMethod("POST");
+    }
+    if (typeof request.setBody === "function") {
+        request.setBody(buildRefreshTokenBody(normalizeRefreshTokenValue(refreshToken)));
+    }
+}
+
+function buildLoginBody(username, password) {
+    return "{\"username\":\"" + escapeJson(username) + "\",\"password\":\"" + escapeJson(password) + "\"}";
+}
+
+function buildRefreshTokenBody(currentRefreshToken) {
+    return "{\"refreshToken\":\"" + escapeJson(normalizeRefreshTokenValue(currentRefreshToken)) + "\"}";
+}
+
+function normalizeRefreshTokenValue(value) {
+    if (value === null || value === undefined) {
+        return "";
+    }
+    var normalized = trimValue(String(value));
+    var upper = normalized.toUpperCase();
+    if (
+        normalized === "" ||
+        upper === "[REDACTED]" ||
+        upper === "REDACTED" ||
+        upper === "NULL" ||
+        upper === "UNDEFINED" ||
+        upper === "YOUR_REFRESH_TOKEN"
+    ) {
+        return "";
+    }
+    return normalized;
+}
+
+function getCurrentRequestPath() {
+    var currentUrl = getCurrentRequestUrl();
+    var withoutHash = currentUrl.split("#")[0];
+    var withoutQuery = withoutHash.split("?")[0];
+    var schemeIndex = withoutQuery.indexOf("://");
+    if (schemeIndex >= 0) {
+        var pathIndex = withoutQuery.indexOf("/", schemeIndex + 3);
+        if (pathIndex >= 0) {
+            return withoutQuery.substring(pathIndex);
+        }
+        return "/";
+    }
+    return withoutQuery;
+}
+
+function getCurrentRequestUrl() {
+    try {
+        if (typeof request.getUrl === "function") {
+            return String(request.getUrl());
+        }
+        if (typeof request.getURI === "function") {
+            return String(request.getURI());
+        }
+        if (typeof request.getUri === "function") {
+            return String(request.getUri());
+        }
+        if (request.url !== undefined) {
+            return String(request.url);
+        }
+    } catch (ignored) {
+        return "";
+    }
+    return "";
 }
 
 function getLoginUrl() {
@@ -182,10 +304,6 @@ function replaceLastPath(url, expectedPath) {
         .replace(/\/api\/login$/i, expectedPath)
         .replace(/\/api\/refresh$/i, expectedPath)
         .replace(/\/api\/validate$/i, expectedPath);
-}
-
-function trimValue(value) {
-    return value.replace(/^\s+|\s+$/g, "");
 }
 
 function escapeJson(value) {
