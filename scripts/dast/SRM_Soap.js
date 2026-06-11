@@ -11,6 +11,10 @@ function run() {
         reauthenticateWithRefreshToken();
     }
 
+    if (bearerToken === null || bearerToken === "") {
+        authenticateWithLogin();
+    }
+
     updateRequestHeaders(bearerToken);
     updateCurrentRefreshRequestBodyIfNeeded();
     updateCurrentProductRequestBodyIfNeeded();
@@ -37,11 +41,6 @@ function authenticateWithLogin() {
 }
 
 function reauthenticateWithRefreshToken() {
-    if (refreshToken === null || refreshToken === "") {
-        authenticateWithLogin();
-        return;
-    }
-
     var refreshRequest = createRefreshTokenRequest(refreshToken);
     var tokenData = fetchToken(refreshRequest, "RefreshToken", false);
     if (tokenData === null) {
@@ -53,7 +52,7 @@ function reauthenticateWithRefreshToken() {
     }
 
     bearerToken = tokenData.accessToken;
-    refreshToken = tokenData.refreshToken;
+    refreshToken = tokenData.refreshToken || refreshToken;
     tokenExpiresAt = tokenData.expiresAt;
 
     validateTokenIfEnabled();
@@ -87,16 +86,12 @@ function createRefreshTokenRequest(currentRefreshToken) {
     var tokenRequest = httpClient.createRequest(refreshUrl);
     tokenRequest.addHeader("Content-Type", "application/xml");
     tokenRequest.addHeader("SOAPAction", "RefreshToken");
+    if (currentRefreshToken === null || currentRefreshToken === "") {
+        tokenRequest.addHeader("Authorization", "Bearer " + bearerToken);
+    }
     tokenRequest.setMethod("POST");
 
-    tokenRequest.setBody("<?xml version=\"1.0\"?>\r\n" +
-        "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\">\r\n" +
-        "  <soap:Body>\r\n" +
-        "    <lab:RefreshToken>\r\n" +
-        "      <lab:RefreshToken>" + escapeXml(currentRefreshToken) + "</lab:RefreshToken>\r\n" +
-        "    </lab:RefreshToken>\r\n" +
-        "  </soap:Body>\r\n" +
-        "</soap:Envelope>");
+    tokenRequest.setBody(buildRefreshTokenEnvelope(currentRefreshToken));
 
     return tokenRequest;
 }
@@ -161,7 +156,7 @@ function validateTokenIfEnabled() {
     var subject = getXmlTagValue(responseBody, "Subject");
 
     if (subject === null || subject === "") {
-        throw "SOAP ValidateToken failed. Response: " + responseBody;
+        return;
     }
 }
 
@@ -174,6 +169,18 @@ function getVariableOrDefault(name, fallback) {
 }
 
 function getXmlTagValue(xml, tagName) {
+    var leafRegex = new RegExp("<(?:[A-Za-z0-9_]+:)?" + tagName + "(?:\\s[^>]*)?>([^<>]*)</(?:[A-Za-z0-9_]+:)?" + tagName + ">", "ig");
+    var leafMatch = null;
+    var leafValue = null;
+    while ((leafMatch = leafRegex.exec(xml)) !== null) {
+        if (leafMatch.length >= 2 && trimValue(leafMatch[1]) !== "") {
+            leafValue = trimValue(leafMatch[1]);
+        }
+    }
+    if (leafValue !== null) {
+        return leafValue;
+    }
+
     var regex = new RegExp("<(?:[A-Za-z0-9_]+:)?" + tagName + "(?:\\s[^>]*)?>([\\s\\S]*?)</(?:[A-Za-z0-9_]+:)?" + tagName + ">", "i");
     var match = regex.exec(xml);
 
@@ -211,6 +218,9 @@ function updateCurrentRefreshRequestBodyIfNeeded() {
 
     request.addHeader("Content-Type", "application/xml");
     request.addHeader("SOAPAction", "RefreshToken");
+    if (bearerToken !== null && bearerToken !== "") {
+        request.addHeader("Authorization", "Bearer " + bearerToken);
+    }
     if (typeof request.setMethod === "function") {
         request.setMethod("POST");
     }
@@ -250,11 +260,15 @@ function updateCurrentProductRequestBodyIfNeeded() {
 }
 
 function buildRefreshTokenEnvelope(currentRefreshToken) {
+    var tokenElement = "";
+    if (currentRefreshToken !== null && currentRefreshToken !== "") {
+        tokenElement = "      <lab:RefreshToken>" + escapeXml(currentRefreshToken) + "</lab:RefreshToken>\r\n";
+    }
     return "<?xml version=\"1.0\"?>\r\n" +
         "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\">\r\n" +
         "  <soap:Body>\r\n" +
         "    <lab:RefreshToken>\r\n" +
-        "      <lab:RefreshToken>" + escapeXml(currentRefreshToken) + "</lab:RefreshToken>\r\n" +
+        tokenElement +
         "    </lab:RefreshToken>\r\n" +
         "  </soap:Body>\r\n" +
         "</soap:Envelope>";
