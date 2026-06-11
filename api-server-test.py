@@ -269,6 +269,18 @@ def init_database():
         )
         conn.execute(
             """
+            CREATE TABLE IF NOT EXISTS audit_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at INTEGER NOT NULL,
+                event_type TEXT NOT NULL,
+                client TEXT,
+                path TEXT,
+                payload TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS sessions (
                 session_id TEXT PRIMARY KEY,
                 username TEXT NOT NULL,
@@ -728,8 +740,55 @@ def is_login_tracking_event(entry):
     return path in LOGIN_TRACKING_PATHS
 
 
+def append_audit_event(entry):
+    AUDIT_LOG.append(entry)
+    if len(AUDIT_LOG) > 5000:
+        del AUDIT_LOG[: len(AUDIT_LOG) - 5000]
+    try:
+        with db_connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO audit_events (created_at, event_type, client, path, payload)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    int(entry.get("time", now())),
+                    str(entry.get("type", "")),
+                    str(entry.get("client", "")),
+                    str(entry.get("path", "")),
+                    json.dumps(entry, ensure_ascii=False),
+                ),
+            )
+    except Exception:
+        pass
+
+
+def persisted_audit_events(limit=5000):
+    try:
+        with db_connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT payload
+                FROM audit_events
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        events = []
+        for row in reversed(rows):
+            try:
+                events.append(json.loads(row["payload"]))
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+        return events
+    except Exception:
+        return list(AUDIT_LOG[-limit:])
+
+
 def login_tracking_report(limit=100):
-    events = [entry for entry in AUDIT_LOG if is_login_tracking_event(entry)]
+    all_events = persisted_audit_events(max(5000, limit))
+    events = [entry for entry in all_events if is_login_tracking_event(entry)]
     selected = []
     for entry in events[-limit:]:
         enriched = dict(entry)
@@ -797,7 +856,7 @@ def login_tracking_report(limit=100):
 
     return {
         "description": "Authentication tracking evidence for login attempts, token validation, expired sessions/tokens, token refresh requests, and new token issuance.",
-        "retention": "audit events are in-memory; sessions and refresh tokens are stored in SQLite",
+        "retention": "audit events, sessions, and refresh tokens are stored in SQLite on the active replica",
         "summary": summary,
         "events": selected,
     }
@@ -910,17 +969,21 @@ class SoapDastHandler(BaseHTTPRequestHandler):
         if action:
             entry["soap_action"] = action
         if request_body is not None:
+            redacted_request_body = redact_sensitive_xml(request_body)
             entry["request_body_length"] = len(request_body)
-            entry["request_body_preview"] = redact_sensitive_xml(request_body)[:1000]
+            entry["request_body"] = redacted_request_body
+            entry["request_body_preview"] = redacted_request_body[:1000]
         if response_body is not None:
+            redacted_response_body = redact_sensitive_xml(response_body)
             entry["response_body_length"] = len(response_body)
-            entry["response_body_preview"] = redact_sensitive_xml(response_body)[:1000]
+            entry["response_body"] = redacted_response_body
+            entry["response_body_preview"] = redacted_response_body[:1000]
         if details:
             entry["details"] = details
-        AUDIT_LOG.append(entry)
+        append_audit_event(entry)
 
     def log_message(self, fmt, *args):
-        AUDIT_LOG.append(
+        append_audit_event(
             {
                 "type": "http",
                 "time": now(),
@@ -965,7 +1028,7 @@ class SoapDastHandler(BaseHTTPRequestHandler):
         for key, value in optional.items():
             if value not in (None, "", {}):
                 entry[key] = value
-        AUDIT_LOG.append(entry)
+        append_audit_event(entry)
 
     def send_body(self, status, body, content_type="application/xml", headers=None):
         raw = body.encode("utf-8")
@@ -1236,6 +1299,7 @@ class SoapDastHandler(BaseHTTPRequestHandler):
     def read_structured_body(self):
         length = int(self.headers.get("Content-Length", "0"))
         raw_body = self.rfile.read(length).decode("utf-8", errors="replace")
+        self.log_interaction_event("request_body_received", request_body=raw_body)
         content_type = self.headers.get("Content-Type", "")
         if "json" in content_type:
             return json.loads(raw_body or "{}")
@@ -2931,6 +2995,12 @@ class VulnerableSoapDastHandler(SoapDastHandler):
         rows = []
         for event in reversed(events):
             css = status_class(event)
+            request_body = event.get("request_body", event.get("request_body_preview", ""))
+            response_body = event.get("response_body", event.get("response_body_preview", ""))
+            if not request_body and int(event.get("request_body_length") or 0) == 0:
+                request_body = "[no request body captured]"
+            if not response_body and int(event.get("response_body_length") or 0) == 0:
+                response_body = "[no response body captured]"
             rows.append(
                 "<tr>"
                 f"<td><span class=\"pill {css}\">{esc(event.get('status') or event.get('http_status') or 'observed')}</span></td>"
@@ -2945,8 +3015,8 @@ class VulnerableSoapDastHandler(SoapDastHandler):
                 f"<td class=\"ua\">{esc(event.get('user_agent', ''))}</td>"
                 f"<td>{esc(event.get('error', ''))}</td>"
                 f"<td class=\"details\">{esc(detail_text(event))}</td>"
-                f"<td class=\"body-preview\"><pre>{esc(event.get('request_body_preview', ''))}</pre></td>"
-                f"<td class=\"body-preview\"><pre>{esc(event.get('response_body_preview', ''))}</pre></td>"
+                f"<td class=\"body-preview\"><pre>{esc(request_body)}</pre></td>"
+                f"<td class=\"body-preview\"><pre>{esc(response_body)}</pre></td>"
                 "</tr>"
             )
         rows_html = "\n".join(rows) or "<tr><td colspan=\"14\">No authentication events have been recorded yet.</td></tr>"
@@ -2983,7 +3053,7 @@ class VulnerableSoapDastHandler(SoapDastHandler):
     .pill.bad {{ background:var(--bad); }}
     .pill.warn {{ background:var(--warn); }}
     .ua, .details {{ color:#3d4b5c; font-size:12px; }}
-    .body-preview pre {{ margin:0; max-height:180px; min-width:260px; overflow:auto; white-space:pre-wrap; font-family: Consolas, Monaco, monospace; font-size:12px; line-height:1.35; color:#2d3748; }}
+    .body-preview pre {{ margin:0; max-height:420px; min-width:340px; overflow:auto; white-space:pre-wrap; font-family: Consolas, Monaco, monospace; font-size:12px; line-height:1.35; color:#2d3748; }}
   </style>
 </head>
 <body>
@@ -3297,9 +3367,30 @@ class VulnerableSoapDastHandler(SoapDastHandler):
                     session_id,
                 )
                 if fallback_token and fallback_record:
+                        refresh_token = fallback_token
+                        record = fallback_record
+                        refresh_token_source = "session_cookie_fallback"
+        if not record:
+            for entry in reversed(persisted_audit_events(1000)):
+                if entry.get("type") != "auth":
+                    continue
+                if entry.get("client") != self.client_address[0]:
+                    continue
+                if entry.get("status") != "success":
+                    continue
+                if entry.get("event") not in {"vulnerable_login", "login"}:
+                    continue
+                if now() - int(entry.get("time", 0)) > 900:
+                    continue
+                fallback_token, fallback_record = get_active_refresh_token_for_session(
+                    entry.get("username", ""),
+                    entry.get("session_id", ""),
+                )
+                if fallback_token and fallback_record:
                     refresh_token = fallback_token
                     record = fallback_record
-                    refresh_token_source = "session_cookie_fallback"
+                    refresh_token_source = "recent_client_login_fallback"
+                    break
         if not record:
             self.log_auth_event(
                 "vulnerable_refresh_token",

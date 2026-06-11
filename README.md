@@ -34,6 +34,7 @@ Relational storage:
 
 - The lab uses SQLite by default at `/tmp/rest_soap_labs.db`.
 - Override the path with `SOAP_DAST_DB_PATH`.
+- On Azure Container Apps with multiple replicas, use Azure Files mounted at `/data` and set `SOAP_DAST_DB_PATH=/data/rest_soap_labs.db` so sessions, refresh tokens, and report evidence survive replica routing.
 - Product catalog records, e-commerce records, and XSS comments are stored in relational tables.
 
 DAST authentication scripts and validation helpers:
@@ -541,7 +542,7 @@ JWT dynamic fields:
 - `sid`: session id
 - `role`: `admin` or `user`
 
-Important testing note: sessions are stored in memory. If the container restarts, old JWTs may return `session_not_found`. In that case, login again and use the new bearer token.
+Important testing note: sessions and refresh tokens are stored in SQLite. In Azure multi-replica deployments, mount Azure Files at `/data` and set `SOAP_DAST_DB_PATH=/data/rest_soap_labs.db` so every replica uses the same state.
 
 ## Fuzzing Checklist
 
@@ -662,9 +663,13 @@ export RESOURCE_GROUP=rg-rest-soap-labs
 export ENVIRONMENT_NAME=cae-rest-soap-labs
 export CONTAINER_APP_NAME=ca-rest-soap-labs
 export ACR_NAME=restsoaplabs
+export STORAGE_ACCOUNT_NAME=strestsoaplabsdata
+export STORAGE_SHARE_NAME=rest-soap-labs-data
 export IMAGE_PLATFORM=linux/amd64
-export MIN_REPLICAS=1
-export MAX_REPLICAS=10
+export MIN_REPLICAS=2
+export MAX_REPLICAS=2
+export CONTAINER_CPU=2.0
+export CONTAINER_MEMORY=4Gi
 
 chmod +x deploy/azure/create-container-apps.sh
 ./deploy/azure/create-container-apps.sh
@@ -672,7 +677,7 @@ chmod +x deploy/azure/create-container-apps.sh
 
 The script uses `docker buildx build --platform linux/amd64 --push` by default. This fixes Azure errors like `no child with platform linux/amd64 in index`.
 
-For DAST scans, keep `MIN_REPLICAS=1`. This keeps one Azure Container Apps replica warm and avoids cold-start delays between scan requests. Use `MIN_REPLICAS=0` only when saving cost matters more than response speed.
+For DAST scans, keep `MIN_REPLICAS=2`, `MAX_REPLICAS=2`, sticky sessions enabled, and Azure Files mounted at `/data`. This keeps two warm replicas and persists SQLite-backed sessions, refresh tokens, and `/report` evidence across the cluster.
 
 Default Azure names:
 
@@ -733,6 +738,7 @@ Armazenamento relacional:
 
 - O laboratorio usa SQLite por padrao em `/tmp/rest_soap_labs.db`.
 - Altere o caminho com `SOAP_DAST_DB_PATH`.
+- No Azure Container Apps com multiplas replicas, use Azure Files montado em `/data` e defina `SOAP_DAST_DB_PATH=/data/rest_soap_labs.db` para persistir sessoes, refresh tokens e evidencias do `/report` entre replicas.
 - Catalogo de produtos, registros de e-commerce e comentarios XSS ficam em tabelas relacionais.
 
 Scripts de autenticacao DAST e validadores:
@@ -1240,7 +1246,7 @@ Campos dinamicos do JWT:
 - `sid`: id da sessao
 - `role`: `admin` ou `user`
 
-Nota importante para testes: as sessoes ficam em memoria. Se o container reiniciar, JWTs antigos podem retornar `session_not_found`. Nesse caso, faca login de novo e use o novo bearer token.
+Nota importante para testes: sessoes e refresh tokens ficam em SQLite. Em deploys Azure com multiplas replicas, monte Azure Files em `/data` e defina `SOAP_DAST_DB_PATH=/data/rest_soap_labs.db` para que todas as replicas usem o mesmo estado.
 
 ## Checklist De Fuzzing
 
@@ -1361,9 +1367,13 @@ export RESOURCE_GROUP=rg-rest-soap-labs
 export ENVIRONMENT_NAME=cae-rest-soap-labs
 export CONTAINER_APP_NAME=ca-rest-soap-labs
 export ACR_NAME=restsoaplabs
+export STORAGE_ACCOUNT_NAME=strestsoaplabsdata
+export STORAGE_SHARE_NAME=rest-soap-labs-data
 export IMAGE_PLATFORM=linux/amd64
-export MIN_REPLICAS=1
-export MAX_REPLICAS=10
+export MIN_REPLICAS=2
+export MAX_REPLICAS=2
+export CONTAINER_CPU=2.0
+export CONTAINER_MEMORY=4Gi
 
 chmod +x deploy/azure/create-container-apps.sh
 ./deploy/azure/create-container-apps.sh
@@ -1371,7 +1381,7 @@ chmod +x deploy/azure/create-container-apps.sh
 
 O script usa `docker buildx build --platform linux/amd64 --push` por padrao. Isso corrige erros da Azure como `no child with platform linux/amd64 in index`.
 
-Para scans DAST, mantenha `MIN_REPLICAS=1`. Isso deixa uma replica do Azure Container Apps sempre aquecida e evita demora de cold start entre as requisicoes do scanner. Use `MIN_REPLICAS=0` somente quando economizar custo for mais importante que velocidade de resposta.
+Para scans DAST, mantenha `MIN_REPLICAS=2`, `MAX_REPLICAS=2`, sticky sessions habilitado e Azure Files montado em `/data`. Isso deixa duas replicas aquecidas e persiste sessoes, refresh tokens e evidencias do `/report` gravadas em SQLite entre as replicas do cluster.
 
 Nomes padrao na Azure:
 

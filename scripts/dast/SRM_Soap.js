@@ -34,13 +34,14 @@ function authenticateWithLogin() {
     }
 
     bearerToken = tokenData.accessToken;
-    refreshToken = tokenData.refreshToken;
+    refreshToken = normalizeRefreshTokenValue(tokenData.refreshToken);
     tokenExpiresAt = tokenData.expiresAt;
 
     validateTokenIfEnabled();
 }
 
 function reauthenticateWithRefreshToken() {
+    refreshToken = normalizeRefreshTokenValue(refreshToken);
     var refreshRequest = createRefreshTokenRequest(refreshToken);
     var tokenData = fetchToken(refreshRequest, "RefreshToken", false);
     if (tokenData === null) {
@@ -52,7 +53,7 @@ function reauthenticateWithRefreshToken() {
     }
 
     bearerToken = tokenData.accessToken;
-    refreshToken = tokenData.refreshToken || refreshToken;
+    refreshToken = normalizeRefreshTokenValue(tokenData.refreshToken) || refreshToken;
     tokenExpiresAt = tokenData.expiresAt;
 
     validateTokenIfEnabled();
@@ -86,7 +87,7 @@ function createRefreshTokenRequest(currentRefreshToken) {
     var tokenRequest = httpClient.createRequest(refreshUrl);
     tokenRequest.addHeader("Content-Type", "application/xml");
     tokenRequest.addHeader("SOAPAction", "RefreshToken");
-    if (currentRefreshToken === null || currentRefreshToken === "") {
+    if (bearerToken !== null && bearerToken !== "") {
         tokenRequest.addHeader("Authorization", "Bearer " + bearerToken);
     }
     tokenRequest.setMethod("POST");
@@ -225,7 +226,7 @@ function updateCurrentRefreshRequestBodyIfNeeded() {
         request.setMethod("POST");
     }
     if (typeof request.setBody === "function") {
-        request.setBody(buildRefreshTokenEnvelope(refreshToken));
+        request.setBody(buildRefreshTokenEnvelope(normalizeRefreshTokenValue(refreshToken)));
     }
 }
 
@@ -261,8 +262,9 @@ function updateCurrentProductRequestBodyIfNeeded() {
 
 function buildRefreshTokenEnvelope(currentRefreshToken) {
     var tokenElement = "";
-    if (currentRefreshToken !== null && currentRefreshToken !== "") {
-        tokenElement = escapeXml(currentRefreshToken);
+    var usableRefreshToken = normalizeRefreshTokenValue(currentRefreshToken);
+    if (usableRefreshToken !== null && usableRefreshToken !== "") {
+        tokenElement = escapeXml(usableRefreshToken);
     }
     return "<?xml version=\"1.0\"?>\r\n" +
         "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\">\r\n" +
@@ -270,6 +272,25 @@ function buildRefreshTokenEnvelope(currentRefreshToken) {
         "    <lab:RefreshToken>" + tokenElement + "</lab:RefreshToken>\r\n" +
         "  </soap:Body>\r\n" +
         "</soap:Envelope>";
+}
+
+function normalizeRefreshTokenValue(value) {
+    if (value === null || value === undefined) {
+        return "";
+    }
+    var normalized = trimValue(String(value));
+    var upper = normalized.toUpperCase();
+    if (
+        normalized === "" ||
+        upper === "[REDACTED]" ||
+        upper === "REDACTED" ||
+        upper === "NULL" ||
+        upper === "UNDEFINED" ||
+        upper === "YOUR_REFRESH_TOKEN"
+    ) {
+        return "";
+    }
+    return normalized;
 }
 
 function getCurrentRequestPath() {
