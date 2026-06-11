@@ -7,9 +7,6 @@ RESOURCE_GROUP="${RESOURCE_GROUP:-rg-${PROJECT_NAME}}"
 ENVIRONMENT_NAME="${ENVIRONMENT_NAME:-cae-${PROJECT_NAME}}"
 CONTAINER_APP_NAME="${CONTAINER_APP_NAME:-ca-${PROJECT_NAME}}"
 ACR_NAME="${ACR_NAME:-restsoaplabs}"
-STORAGE_ACCOUNT_NAME="${STORAGE_ACCOUNT_NAME:-strestsoaplabsdata}"
-STORAGE_SHARE_NAME="${STORAGE_SHARE_NAME:-rest-soap-labs-data}"
-STORAGE_MOUNT_NAME="${STORAGE_MOUNT_NAME:-rest-soap-labs-data}"
 IMAGE_NAME="${IMAGE_NAME:-${PROJECT_NAME}}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 IMAGE_URI="${ACR_NAME}.azurecr.io/${IMAGE_NAME}:${IMAGE_TAG}"
@@ -25,9 +22,6 @@ echo "  RESOURCE_GROUP=${RESOURCE_GROUP}"
 echo "  ENVIRONMENT_NAME=${ENVIRONMENT_NAME}"
 echo "  CONTAINER_APP_NAME=${CONTAINER_APP_NAME}"
 echo "  ACR_NAME=${ACR_NAME}"
-echo "  STORAGE_ACCOUNT_NAME=${STORAGE_ACCOUNT_NAME}"
-echo "  STORAGE_SHARE_NAME=${STORAGE_SHARE_NAME}"
-echo "  STORAGE_MOUNT_NAME=${STORAGE_MOUNT_NAME}"
 echo "  IMAGE_URI=${IMAGE_URI}"
 echo "  IMAGE_PLATFORM=${IMAGE_PLATFORM}"
 echo "  MIN_REPLICAS=${MIN_REPLICAS}"
@@ -51,30 +45,6 @@ az containerapp env create \
   --name "${ENVIRONMENT_NAME}" \
   --resource-group "${RESOURCE_GROUP}" \
   --location "${LOCATION}" >/dev/null 2>&1 || true
-
-az storage account create \
-  --resource-group "${RESOURCE_GROUP}" \
-  --name "${STORAGE_ACCOUNT_NAME}" \
-  --location "${LOCATION}" \
-  --sku Standard_LRS \
-  --kind StorageV2 >/dev/null 2>&1 || true
-
-STORAGE_ACCOUNT_KEY="$(az storage account keys list --resource-group "${RESOURCE_GROUP}" --account-name "${STORAGE_ACCOUNT_NAME}" --query '[0].value' -o tsv)"
-
-az storage share-rm create \
-  --resource-group "${RESOURCE_GROUP}" \
-  --storage-account "${STORAGE_ACCOUNT_NAME}" \
-  --name "${STORAGE_SHARE_NAME}" \
-  --quota 5 >/dev/null 2>&1 || true
-
-az containerapp env storage set \
-  --name "${ENVIRONMENT_NAME}" \
-  --resource-group "${RESOURCE_GROUP}" \
-  --storage-name "${STORAGE_MOUNT_NAME}" \
-  --access-mode ReadWrite \
-  --azure-file-account-name "${STORAGE_ACCOUNT_NAME}" \
-  --azure-file-account-key "${STORAGE_ACCOUNT_KEY}" \
-  --azure-file-share-name "${STORAGE_SHARE_NAME}" >/dev/null
 
 az containerapp create \
   --name "${CONTAINER_APP_NAME}" \
@@ -101,14 +71,14 @@ az containerapp update \
   --max-replicas "${MAX_REPLICAS}" \
   --cpu "${CONTAINER_CPU}" \
   --memory "${CONTAINER_MEMORY}" \
-  --set-env-vars SOAP_DAST_HOST=0.0.0.0 SOAP_DAST_PORT=8089 SOAP_DAST_PUBLIC_HOST="${VULN_FQDN}" SOAP_DAST_PUBLIC_PORT=443 SOAP_DAST_DB_PATH=/data/rest_soap_labs.db >/dev/null
+  --set-env-vars SOAP_DAST_HOST=0.0.0.0 SOAP_DAST_PORT=8089 SOAP_DAST_PUBLIC_HOST="${VULN_FQDN}" SOAP_DAST_PUBLIC_PORT=443 SOAP_DAST_DB_PATH=/tmp/rest_soap_labs.db >/dev/null
 
 az containerapp ingress sticky-sessions set \
   --name "${CONTAINER_APP_NAME}" \
   --resource-group "${RESOURCE_GROUP}" \
   --affinity sticky >/dev/null
 
-echo "Azure Files storage is registered as ${STORAGE_MOUNT_NAME}. Mount it at /data with deploy/azure/container-app-vulnerable.yaml when running multiple replicas."
+echo "Sticky sessions are enabled. SQLite uses /tmp by default; use an external database for true cross-replica persistence."
 
 echo "Vulnerable app URL:"
 echo "https://${VULN_FQDN}/soap?wsdl"

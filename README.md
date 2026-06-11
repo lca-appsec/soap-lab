@@ -34,7 +34,7 @@ Relational storage:
 
 - The lab uses SQLite by default at `/tmp/rest_soap_labs.db`.
 - Override the path with `SOAP_DAST_DB_PATH`.
-- On Azure Container Apps with multiple replicas, use Azure Files mounted at `/data` and set `SOAP_DAST_DB_PATH=/data/rest_soap_labs.db` so sessions, refresh tokens, and report evidence survive replica routing.
+- On Azure Container Apps with multiple replicas, keep sticky sessions enabled. Do not put SQLite on Azure Files for this lab; simultaneous replica startup can lock the database. Use an external database for true cross-replica persistence.
 - Product catalog records, e-commerce records, and XSS comments are stored in relational tables.
 
 DAST authentication scripts and validation helpers:
@@ -542,7 +542,7 @@ JWT dynamic fields:
 - `sid`: session id
 - `role`: `admin` or `user`
 
-Important testing note: sessions and refresh tokens are stored in SQLite. In Azure multi-replica deployments, mount Azure Files at `/data` and set `SOAP_DAST_DB_PATH=/data/rest_soap_labs.db` so every replica uses the same state.
+Important testing note: sessions and refresh tokens are stored in SQLite. With two Azure replicas, sticky sessions keep a scanner/browser on the same replica. For true shared state across replicas, use an external database instead of Azure Files.
 
 ## Fuzzing Checklist
 
@@ -663,8 +663,6 @@ export RESOURCE_GROUP=rg-rest-soap-labs
 export ENVIRONMENT_NAME=cae-rest-soap-labs
 export CONTAINER_APP_NAME=ca-rest-soap-labs
 export ACR_NAME=restsoaplabs
-export STORAGE_ACCOUNT_NAME=strestsoaplabsdata
-export STORAGE_SHARE_NAME=rest-soap-labs-data
 export IMAGE_PLATFORM=linux/amd64
 export MIN_REPLICAS=2
 export MAX_REPLICAS=2
@@ -677,7 +675,7 @@ chmod +x deploy/azure/create-container-apps.sh
 
 The script uses `docker buildx build --platform linux/amd64 --push` by default. This fixes Azure errors like `no child with platform linux/amd64 in index`.
 
-For DAST scans, keep `MIN_REPLICAS=2`, `MAX_REPLICAS=2`, sticky sessions enabled, and Azure Files mounted at `/data`. This keeps two warm replicas and persists SQLite-backed sessions, refresh tokens, and `/report` evidence across the cluster.
+For DAST scans, keep `MIN_REPLICAS=2`, `MAX_REPLICAS=2`, and sticky sessions enabled. SQLite stays local to each replica; use PostgreSQL, Azure SQL, or another external database if you need true shared `/report`, session, and refresh-token state across replicas.
 
 Default Azure names:
 
@@ -738,7 +736,7 @@ Armazenamento relacional:
 
 - O laboratorio usa SQLite por padrao em `/tmp/rest_soap_labs.db`.
 - Altere o caminho com `SOAP_DAST_DB_PATH`.
-- No Azure Container Apps com multiplas replicas, use Azure Files montado em `/data` e defina `SOAP_DAST_DB_PATH=/data/rest_soap_labs.db` para persistir sessoes, refresh tokens e evidencias do `/report` entre replicas.
+- No Azure Container Apps com multiplas replicas, mantenha sticky sessions habilitado. Nao coloque SQLite em Azure Files para este lab; a inicializacao simultanea das replicas pode travar o banco. Use banco externo para persistencia real entre replicas.
 - Catalogo de produtos, registros de e-commerce e comentarios XSS ficam em tabelas relacionais.
 
 Scripts de autenticacao DAST e validadores:
@@ -1246,7 +1244,7 @@ Campos dinamicos do JWT:
 - `sid`: id da sessao
 - `role`: `admin` ou `user`
 
-Nota importante para testes: sessoes e refresh tokens ficam em SQLite. Em deploys Azure com multiplas replicas, monte Azure Files em `/data` e defina `SOAP_DAST_DB_PATH=/data/rest_soap_labs.db` para que todas as replicas usem o mesmo estado.
+Nota importante para testes: sessoes e refresh tokens ficam em SQLite. Com duas replicas na Azure, sticky sessions mantem o scanner/browser na mesma replica. Para estado realmente compartilhado entre replicas, use um banco externo em vez de Azure Files.
 
 ## Checklist De Fuzzing
 
@@ -1367,8 +1365,6 @@ export RESOURCE_GROUP=rg-rest-soap-labs
 export ENVIRONMENT_NAME=cae-rest-soap-labs
 export CONTAINER_APP_NAME=ca-rest-soap-labs
 export ACR_NAME=restsoaplabs
-export STORAGE_ACCOUNT_NAME=strestsoaplabsdata
-export STORAGE_SHARE_NAME=rest-soap-labs-data
 export IMAGE_PLATFORM=linux/amd64
 export MIN_REPLICAS=2
 export MAX_REPLICAS=2
@@ -1381,7 +1377,7 @@ chmod +x deploy/azure/create-container-apps.sh
 
 O script usa `docker buildx build --platform linux/amd64 --push` por padrao. Isso corrige erros da Azure como `no child with platform linux/amd64 in index`.
 
-Para scans DAST, mantenha `MIN_REPLICAS=2`, `MAX_REPLICAS=2`, sticky sessions habilitado e Azure Files montado em `/data`. Isso deixa duas replicas aquecidas e persiste sessoes, refresh tokens e evidencias do `/report` gravadas em SQLite entre as replicas do cluster.
+Para scans DAST, mantenha `MIN_REPLICAS=2`, `MAX_REPLICAS=2` e sticky sessions habilitado. O SQLite fica local em cada replica; use PostgreSQL, Azure SQL ou outro banco externo se precisar compartilhar `/report`, sessao e refresh token entre replicas.
 
 Nomes padrao na Azure:
 

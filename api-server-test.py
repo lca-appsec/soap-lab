@@ -214,9 +214,25 @@ def now():
 
 
 def db_connect():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout = 30000")
     return conn
+
+
+def execute_with_db_retry(operation, attempts=5, delay=0.25):
+    last_error = None
+    for attempt in range(attempts):
+        try:
+            return operation()
+        except sqlite3.OperationalError as exc:
+            last_error = exc
+            if "locked" not in str(exc).lower() or attempt == attempts - 1:
+                raise
+            time.sleep(delay * (attempt + 1))
+    if last_error:
+        raise last_error
+    return None
 
 
 def row_to_dict(row):
@@ -228,117 +244,124 @@ def row_to_dict(row):
 
 
 def init_database():
-    with db_connect() as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS catalog_products (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                category TEXT NOT NULL,
-                name TEXT NOT NULL,
-                description TEXT NOT NULL,
-                value REAL NOT NULL,
-                stock INTEGER NOT NULL,
-                promotion TEXT NOT NULL
-            )
-            """
-        )
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS comments (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                comment TEXT NOT NULL,
-                created_at INTEGER NOT NULL
-            )
-            """
-        )
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS ecommerce_records (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                route_type TEXT NOT NULL,
-                slug TEXT NOT NULL,
-                title TEXT NOT NULL,
-                description TEXT NOT NULL,
-                value REAL NOT NULL,
-                stock INTEGER NOT NULL,
-                status TEXT NOT NULL,
-                metadata TEXT NOT NULL
-            )
-            """
-        )
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS audit_events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                created_at INTEGER NOT NULL,
-                event_type TEXT NOT NULL,
-                client TEXT,
-                path TEXT,
-                payload TEXT NOT NULL
-            )
-            """
-        )
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS sessions (
-                session_id TEXT PRIMARY KEY,
-                username TEXT NOT NULL,
-                created_at INTEGER NOT NULL,
-                expires_at INTEGER NOT NULL
-            )
-            """
-        )
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS refresh_tokens (
-                refresh_token TEXT PRIMARY KEY,
-                username TEXT NOT NULL,
-                session_id TEXT NOT NULL,
-                expires_at INTEGER NOT NULL,
-                active INTEGER NOT NULL
-            )
-            """
-        )
-        if conn.execute("SELECT COUNT(*) FROM catalog_products").fetchone()[0] == 0:
-            for category, products in FUZZING_CATALOG.items():
-                conn.executemany(
-                    """
-                    INSERT INTO catalog_products (category, name, description, value, stock, promotion)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """,
-                    [
-                        (
-                            category,
-                            product["name"],
-                            product["description"],
-                            product["value"],
-                            product["stock"],
-                            product["promotion"],
-                        )
-                        for product in products
-                    ],
+    def initialize():
+        with db_connect() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS catalog_products (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    category TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    description TEXT NOT NULL,
+                    value REAL NOT NULL,
+                    stock INTEGER NOT NULL,
+                    promotion TEXT NOT NULL
                 )
-        if conn.execute("SELECT COUNT(*) FROM ecommerce_records").fetchone()[0] == 0:
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS comments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    comment TEXT NOT NULL,
+                    created_at INTEGER NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS ecommerce_records (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    route_type TEXT NOT NULL,
+                    slug TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    description TEXT NOT NULL,
+                    value REAL NOT NULL,
+                    stock INTEGER NOT NULL,
+                    status TEXT NOT NULL,
+                    metadata TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS audit_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at INTEGER NOT NULL,
+                    event_type TEXT NOT NULL,
+                    client TEXT,
+                    path TEXT,
+                    payload TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS sessions (
+                    session_id TEXT PRIMARY KEY,
+                    username TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    expires_at INTEGER NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS refresh_tokens (
+                    refresh_token TEXT PRIMARY KEY,
+                    username TEXT NOT NULL,
+                    session_id TEXT NOT NULL,
+                    expires_at INTEGER NOT NULL,
+                    active INTEGER NOT NULL
+                )
+                """
+            )
+            seed_database(conn)
+
+    execute_with_db_retry(initialize, attempts=8, delay=0.5)
+
+
+def seed_database(conn):
+    if conn.execute("SELECT COUNT(*) FROM catalog_products").fetchone()[0] == 0:
+        for category, products in FUZZING_CATALOG.items():
             conn.executemany(
                 """
-                INSERT INTO ecommerce_records (route_type, slug, title, description, value, stock, status, metadata)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO catalog_products (category, name, description, value, stock, promotion)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
-                        item["route_type"],
-                        item["slug"],
-                        item["title"],
-                        item["description"],
-                        item["value"],
-                        item["stock"],
-                        item["status"],
-                        item["metadata"],
+                        category,
+                        product["name"],
+                        product["description"],
+                        product["value"],
+                        product["stock"],
+                        product["promotion"],
                     )
-                    for item in ECOMMERCE_RECORDS
+                    for product in products
                 ],
             )
+    if conn.execute("SELECT COUNT(*) FROM ecommerce_records").fetchone()[0] == 0:
+        conn.executemany(
+            """
+            INSERT INTO ecommerce_records (route_type, slug, title, description, value, stock, status, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    item["route_type"],
+                    item["slug"],
+                    item["title"],
+                    item["description"],
+                    item["value"],
+                    item["stock"],
+                    item["status"],
+                    item["metadata"],
+                )
+                for item in ECOMMERCE_RECORDS
+            ],
+        )
 
 
 def catalog_category_exists(category):

@@ -12,7 +12,7 @@ properties:
       maxReplicas: 2
     containers:
       - name: ca-rest-soap-labs
-        image: restsoaplabs.azurecr.io/rest-soap-labs:report-sticky-20260610
+        image: restsoaplabs.azurecr.io/rest-soap-labs:stable-sticky-20260610
         env:
           - name: SOAP_DAST_HOST
             value: 0.0.0.0
@@ -21,14 +21,7 @@ properties:
           - name: SOAP_DAST_VULN_PUBLIC_PORT
             value: "443"
           - name: SOAP_DAST_DB_PATH
-            value: /data/rest_soap_labs.db
-        volumeMounts:
-          - volumeName: rest-soap-labs-data
-            mountPath: /data
+            value: /tmp/rest_soap_labs.db
         resources:
           cpu: 2.0
           memory: 4Gi
-    volumes:
-      - name: rest-soap-labs-data
-        storageType: AzureFile
-        storageName: rest-soap-labs-data
