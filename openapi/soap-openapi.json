@@ -7,7 +7,7 @@
   },
   "servers": [
     {
-      "url": "https://ca-rest-soap-labs.wonderfulcoast-2578bc9b.eastus.azurecontainerapps.io:8089"
+      "url": "https://ca-rest-soap-labs.wonderfulcoast-2578bc9b.eastus.azurecontainerapps.io"
     }
   ],
   "components": {
