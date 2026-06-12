@@ -32,7 +32,7 @@ ACCESS_TOKEN_TTL_SECONDS = 120
 REFRESH_TOKEN_TTL_SECONDS = 900
 SESSION_TTL_SECONDS = 600
 LOCAL_TIMEZONE_NAME = os.environ.get("SOAP_DAST_TIMEZONE", "America/Sao_Paulo")
-DB_PATH = os.environ.get("SOAP_DAST_DB_PATH", "/tmp/rest_soap_labs.db")
+DB_PATH = os.environ.get("SOAP_DAST_DB_PATH", "data/rest_soap_labs.db")
 
 USERS = {
     "veracode": {
@@ -241,6 +241,9 @@ def now():
 
 
 def db_connect():
+    db_dir = os.path.dirname(DB_PATH)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout = 30000")
@@ -337,6 +340,29 @@ def init_database():
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS login_audit_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at INTEGER NOT NULL,
+                    event_type TEXT NOT NULL,
+                    event_name TEXT,
+                    username TEXT,
+                    status TEXT,
+                    http_status INTEGER,
+                    client TEXT,
+                    method TEXT,
+                    path TEXT,
+                    user_agent TEXT,
+                    payload TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_login_audit_created_at ON login_audit_events (created_at)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_login_audit_username ON login_audit_events (username)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_login_audit_event_name ON login_audit_events (event_name)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_login_audit_status ON login_audit_events (status)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_login_audit_path ON login_audit_events (path)")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS sessions (
@@ -691,6 +717,23 @@ def local_time_fields(epoch_seconds):
     }
 
 
+def local_date_to_epoch(value, end_of_day=False):
+    value = (value or "").strip()
+    if not value:
+        return None
+    formats = ["%Y-%m-%d", "%Y-%m-%dT%H:%M"]
+    for fmt in formats:
+        try:
+            dt = datetime.strptime(value, fmt)
+            if fmt == "%Y-%m-%d" and end_of_day:
+                dt = dt.replace(hour=23, minute=59, second=59)
+            dt = dt.replace(tzinfo=local_timezone())
+            return int(dt.timestamp())
+        except ValueError:
+            continue
+    return None
+
+
 def token_fingerprint(token):
     if not token:
         return ""
@@ -912,6 +955,32 @@ def is_login_tracking_event(entry):
     return path in LOGIN_TRACKING_PATHS
 
 
+def insert_login_audit_event(conn, entry):
+    headers = entry.get("headers") if isinstance(entry.get("headers"), dict) else {}
+    conn.execute(
+        """
+        INSERT INTO login_audit_events (
+            created_at, event_type, event_name, username, status, http_status,
+            client, method, path, user_agent, payload
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            int(entry.get("time", now())),
+            str(entry.get("type", "")),
+            str(entry.get("event", "")),
+            str(entry.get("username", "")),
+            str(entry.get("status", "")),
+            int(entry.get("http_status") or 0),
+            str(entry.get("client", "")),
+            str(entry.get("method", "")),
+            str(entry.get("path", "")),
+            str(entry.get("user_agent", "") or headers.get("User-Agent") or headers.get("user-agent") or ""),
+            json.dumps(entry, ensure_ascii=False),
+        ),
+    )
+
+
 def append_audit_event(entry):
     AUDIT_LOG.append(entry)
     if len(AUDIT_LOG) > 5000:
@@ -931,6 +1000,8 @@ def append_audit_event(entry):
                     json.dumps(entry, ensure_ascii=False),
                 ),
             )
+            if is_login_audit_event(entry):
+                insert_login_audit_event(conn, entry)
     except Exception:
         pass
 
@@ -956,6 +1027,65 @@ def persisted_audit_events(limit=5000):
         return events
     except Exception:
         return list(AUDIT_LOG[-limit:])
+
+
+def persisted_login_audit_events(limit=5000, start_at=None, end_at=None):
+    clauses = []
+    params = []
+    if start_at is not None:
+        clauses.append("created_at >= ?")
+        params.append(int(start_at))
+    if end_at is not None:
+        clauses.append("created_at <= ?")
+        params.append(int(end_at))
+    where = " WHERE " + " AND ".join(clauses) if clauses else ""
+    params.append(limit)
+    try:
+        with db_connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT payload
+                FROM login_audit_events
+                {where}
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                params,
+            ).fetchall()
+        events = []
+        for row in reversed(rows):
+            try:
+                events.append(json.loads(row["payload"]))
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+        return events
+    except Exception:
+        events = [entry for entry in persisted_audit_events(limit) if is_login_audit_event(entry)]
+        if start_at is not None:
+            events = [entry for entry in events if int(entry.get("time", 0)) >= int(start_at)]
+        if end_at is not None:
+            events = [entry for entry in events if int(entry.get("time", 0)) <= int(end_at)]
+        return events[-limit:]
+
+
+def backfill_login_audit_events():
+    def backfill():
+        with db_connect() as conn:
+            if conn.execute("SELECT COUNT(*) FROM login_audit_events").fetchone()[0] > 0:
+                return
+            rows = conn.execute("SELECT payload FROM audit_events ORDER BY id ASC").fetchall()
+            for row in rows:
+                try:
+                    entry = json.loads(row["payload"])
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    continue
+                if is_login_audit_event(entry):
+                    insert_login_audit_event(conn, entry)
+
+    try:
+        execute_with_db_retry(backfill, attempts=5, delay=0.25)
+    except Exception:
+        pass
 
 
 def login_tracking_report(limit=100):
@@ -1057,9 +1187,57 @@ def is_login_audit_event(entry):
     return path in LOGIN_AUDIT_PATHS
 
 
-def login_audit_report(limit=100):
-    all_events = persisted_audit_events(max(5000, limit))
-    events = [entry for entry in all_events if is_login_audit_event(entry)]
+def login_audit_event_text(event):
+    parts = [
+        event.get("event", ""),
+        event.get("username", ""),
+        event.get("role", ""),
+        event.get("status", ""),
+        event.get("error", ""),
+        event.get("method", ""),
+        event.get("path", ""),
+        event.get("client", ""),
+        event.get("user_agent", ""),
+        event.get("request_body", ""),
+        event.get("response_body", ""),
+        event.get("request_body_preview", ""),
+        event.get("response_body_preview", ""),
+    ]
+    headers = event.get("headers") if isinstance(event.get("headers"), dict) else {}
+    parts.extend([headers.get("User-Agent", ""), headers.get("user-agent", "")])
+    return " ".join(str(part).lower() for part in parts)
+
+
+def login_audit_event_matches_filters(event, filters):
+    for field, value in (filters or {}).items():
+        value = (value or "").strip()
+        if not value or field in {"date_from", "date_to"}:
+            continue
+        needle = value.lower()
+        if field == "q":
+            if needle not in login_audit_event_text(event):
+                return False
+        elif field == "event":
+            if needle not in str(event.get("event", "")).lower():
+                return False
+        elif field == "path":
+            if needle not in str(event.get("path", "")).lower():
+                return False
+        elif field == "user":
+            if needle not in str(event.get("username", "")).lower():
+                return False
+        elif field == "status":
+            combined_status = f"{event.get('status', '')} {event.get('http_status', '')}".lower()
+            if needle not in combined_status:
+                return False
+        elif needle not in str(event.get(field, "")).lower():
+            return False
+    return True
+
+
+def login_audit_report(limit=100, start_at=None, end_at=None, filters=None):
+    events = persisted_login_audit_events(max(5000, limit), start_at=start_at, end_at=end_at)
+    events = [entry for entry in events if login_audit_event_matches_filters(entry, filters or {})]
     selected = []
     for entry in events[-limit:]:
         enriched = dict(entry)
@@ -1096,7 +1274,7 @@ def login_audit_report(limit=100):
 
     return {
         "description": "Login audit evidence for login, re-login through refresh token, and logout interactions.",
-        "retention": "audit events, sessions, and refresh tokens are stored in SQLite on the active replica",
+        "retention": "login audit events are stored in the SQLite login_audit_events table for later consultation",
         "summary": summary,
         "events": selected,
     }
@@ -1166,6 +1344,7 @@ WSDL = f"""<?xml version="1.0" encoding="UTF-8"?>
 """
 
 init_database()
+backfill_login_audit_events()
 
 
 class SoapDastHandler(BaseHTTPRequestHandler):
@@ -1255,6 +1434,8 @@ class SoapDastHandler(BaseHTTPRequestHandler):
         token_id=None,
         error=None,
         details=None,
+        request_body=None,
+        response_body=None,
     ):
         entry = {
             "type": "auth",
@@ -1277,6 +1458,18 @@ class SoapDastHandler(BaseHTTPRequestHandler):
         for key, value in optional.items():
             if value not in (None, "", {}):
                 entry[key] = value
+        if request_body is not None:
+            redacted_request_body = redact_sensitive_xml(request_body)
+            entry["request_body_length"] = len(request_body)
+            entry["raw_request_body"] = request_body
+            entry["request_body"] = redacted_request_body
+            entry["request_body_preview"] = redacted_request_body[:1000]
+        if response_body is not None:
+            redacted_response_body = redact_sensitive_xml(response_body)
+            entry["response_body_length"] = len(response_body)
+            entry["raw_response_body"] = response_body
+            entry["response_body"] = redacted_response_body
+            entry["response_body_preview"] = redacted_response_body[:1000]
         append_audit_event(entry)
 
     def send_body(self, status, body, content_type="application/xml", headers=None):
@@ -1332,7 +1525,7 @@ class SoapDastHandler(BaseHTTPRequestHandler):
 
     def do_HEAD(self):
         parsed = urlparse(self.path)
-        if parsed.path in {"/", "/health", "/soap", "/soap/auth", "/soap/refreshtoken", "/audit", "/login-tracking", "/login-audit"}:
+        if parsed.path in {"/", "/health", "/soap", "/soap/auth", "/soap/refreshtoken", "/audit", "/login-tracking", "/login-audit", "/login/audit"}:
             self.send_head_only(200)
             return
         if parsed.path == "/soap" and "wsdl" in parse_qs(parsed.query, keep_blank_values=True):
@@ -1397,14 +1590,17 @@ class SoapDastHandler(BaseHTTPRequestHandler):
             limit = max(1, min(limit, 500))
             self.send_json(200, login_tracking_report(limit))
             return
-        if parsed.path == "/login-audit":
+        if parsed.path in {"/login-audit", "/login/audit"}:
             query = parse_qs(parsed.query, keep_blank_values=True)
             try:
                 limit = int(query.get("limit", ["100"])[0])
             except ValueError:
                 limit = 100
             limit = max(1, min(limit, 500))
-            self.send_json(200, login_audit_report(limit))
+            start_at = local_date_to_epoch(query.get("date_from", [""])[0])
+            end_at = local_date_to_epoch(query.get("date_to", [""])[0], end_of_day=True)
+            filters = {key: query.get(key, [""])[0].strip() for key in ("q", "user", "event", "status", "path")}
+            self.send_json(200, login_audit_report(limit, start_at=start_at, end_at=end_at, filters=filters))
             return
         if parsed.path == "/soap/auth":
             self.send_json(
@@ -1418,6 +1614,7 @@ class SoapDastHandler(BaseHTTPRequestHandler):
                     "audit": "Authentication and token validation attempts are recorded in /audit.",
                     "login_tracking": "/login-tracking",
                     "login_audit": "/login-audit",
+                    "login_audit_alias": "/login/audit",
                 },
             )
             return
@@ -1432,6 +1629,7 @@ class SoapDastHandler(BaseHTTPRequestHandler):
                     "audit": "Refresh token requests are recorded in /audit and /login-tracking.",
                     "login_tracking": "/login-tracking",
                     "login_audit": "/login-audit",
+                    "login_audit_alias": "/login/audit",
                 },
             )
             return
@@ -1564,6 +1762,7 @@ class SoapDastHandler(BaseHTTPRequestHandler):
     def read_structured_body(self):
         length = int(self.headers.get("Content-Length", "0"))
         raw_body = self.rfile.read(length).decode("utf-8", errors="replace")
+        self._last_request_body = raw_body
         self.log_interaction_event("request_body_received", request_body=raw_body)
         content_type = self.headers.get("Content-Type", "")
         if "json" in content_type:
@@ -2267,6 +2466,19 @@ def ecommerce_query_parameters():
     ]
 
 
+def login_audit_query_parameters():
+    return [
+        {"name": "limit", "in": "query", "required": False, "schema": {"type": "integer", "minimum": 1, "maximum": 500}, "example": 100},
+        {"name": "q", "in": "query", "required": False, "schema": {"type": "string"}, "example": "refresh"},
+        {"name": "user", "in": "query", "required": False, "schema": {"type": "string"}, "example": "veracode"},
+        {"name": "event", "in": "query", "required": False, "schema": {"type": "string"}, "example": "refresh"},
+        {"name": "status", "in": "query", "required": False, "schema": {"type": "string"}, "example": "success"},
+        {"name": "path", "in": "query", "required": False, "schema": {"type": "string"}, "example": "/soap/refreshtoken"},
+        {"name": "date_from", "in": "query", "required": False, "schema": {"type": "string", "format": "date"}, "example": "2026-06-12"},
+        {"name": "date_to", "in": "query", "required": False, "schema": {"type": "string", "format": "date"}, "example": "2026-06-12"},
+    ]
+
+
 SWAGGER_PRODUCT_CREATE_EXAMPLES = [
     {"sku": "SKU-SWG-001", "name": "Aurora Smart TV 55", "price": 2499.90, "stock": 8},
     {"sku": "SKU-SWG-002", "name": "Boreal Notebook Pro", "price": 5299.90, "stock": 5},
@@ -2368,6 +2580,7 @@ REST_ALLOWED_VERBS_BY_PATH = {
     "/comments": "GET, POST, HEAD, OPTIONS",
     "/report": "GET, HEAD, OPTIONS",
     "/login-audit": "GET, HEAD, OPTIONS",
+    "/login/audit": "GET, HEAD, OPTIONS",
     "/health": "GET, HEAD, OPTIONS",
 }
 
@@ -2384,6 +2597,7 @@ XML_ALLOWED_VERBS_BY_PATH = {
     "/audit": "GET, HEAD, OPTIONS",
     "/login-tracking": "GET, HEAD, OPTIONS",
     "/login-audit": "GET, HEAD, OPTIONS",
+    "/login/audit": "GET, HEAD, OPTIONS",
     "/report": "GET, HEAD, OPTIONS",
     "/health": "GET, HEAD, OPTIONS",
 }
@@ -2662,9 +2876,10 @@ def rest_openapi_spec():
             },
             "/api/audit": {"get": {"summary": "Read HTTP/auth audit events", "responses": {"200": {"description": "Audit log"}}}},
             "/api/login-tracking": {"get": {"summary": "Read authentication tracking evidence", "responses": {"200": {"description": "Login and token tracking evidence"}}}},
-            "/api/login-audit": {"get": {"summary": "Read focused login, refresh, and logout audit evidence", "responses": {"200": {"description": "Login audit evidence"}}}},
+            "/api/login-audit": {"get": {"summary": "Read focused login, refresh, and logout audit evidence", "parameters": login_audit_query_parameters(), "responses": {"200": {"description": "Login audit evidence"}}}},
             "/report": {"get": {"summary": "Executive HTML authentication report", "responses": {"200": {"description": "Human-readable login tracking report"}}}},
-            "/login-audit": {"get": {"summary": "Executive HTML login audit report", "responses": {"200": {"description": "Human-readable login, refresh, and logout report"}}}},
+            "/login-audit": {"get": {"summary": "Executive HTML login audit report", "parameters": login_audit_query_parameters(), "responses": {"200": {"description": "Human-readable login, refresh, and logout report"}}}},
+            "/login/audit": {"get": {"summary": "Alias for executive HTML login audit report", "parameters": login_audit_query_parameters(), "responses": {"200": {"description": "Human-readable login, refresh, and logout report"}}}},
             "/health": {"get": {"summary": "Container health check", "responses": {"200": {"description": "Application is running"}}}},
         },
     }
@@ -2848,7 +3063,8 @@ def xml_openapi_spec():
             },
             "/audit": {"get": {"summary": "XML audit log", "responses": {"200": {"description": "XML audit events"}}}},
             "/login-tracking": {"get": {"summary": "XML authentication tracking evidence", "responses": {"200": {"description": "Login and token tracking evidence"}}}},
-            "/login-audit": {"get": {"summary": "HTML login, refresh, and logout audit report", "responses": {"200": {"description": "Human-readable login audit report"}}}},
+            "/login-audit": {"get": {"summary": "HTML login, refresh, and logout audit report", "parameters": login_audit_query_parameters(), "responses": {"200": {"description": "Human-readable login audit report"}}}},
+            "/login/audit": {"get": {"summary": "Alias for HTML login, refresh, and logout audit report", "parameters": login_audit_query_parameters(), "responses": {"200": {"description": "Human-readable login audit report"}}}},
             "/report": {"get": {"summary": "Executive HTML authentication report", "responses": {"200": {"description": "Human-readable login tracking report"}}}},
             "/health": {"get": {"summary": "Container health check", "responses": {"200": {"description": "Application is running"}}}},
         },
@@ -2902,6 +3118,7 @@ class ApiServerTestHandler(SoapDastHandler):
     def read_json_api_body(self):
         length = int(self.headers.get("Content-Length", "0"))
         raw_body = self.rfile.read(length).decode("utf-8", errors="replace")
+        self._last_request_body = raw_body
         self.log_interaction_event("request_body_received", request_body=raw_body)
         if not raw_body.strip():
             return {}
@@ -2949,6 +3166,7 @@ class ApiServerTestHandler(SoapDastHandler):
             "/comments",
             "/report",
             "/login-audit",
+            "/login/audit",
             "/audit",
             "/login-tracking",
             "/admin",
@@ -2958,7 +3176,7 @@ class ApiServerTestHandler(SoapDastHandler):
             "/soap/auth",
             "/soap/refreshtoken",
         } or is_dynamic_catalog:
-            content_type = "text/html" if parsed.path in {"/comments", "/report", "/login-audit"} else "application/json"
+            content_type = "text/html" if parsed.path in {"/comments", "/report", "/login-audit", "/login/audit"} else "application/json"
             if parsed.path in {"/audit", "/login-tracking", "/admin", "/user", "/products", "/soap", "/soap/auth", "/soap/refreshtoken"} or parsed.path.startswith(("/products/", "/ecommerce/")):
                 content_type = "application/xml"
             self.send_head_only(200, content_type=content_type)
@@ -3033,6 +3251,7 @@ class ApiServerTestHandler(SoapDastHandler):
                     "audit": "/api/audit",
                     "login_tracking": "/api/login-tracking",
                     "login_audit": "/login-audit",
+                    "login_audit_alias": "/login/audit",
                     "executive_report": "/report",
                 },
             )
@@ -3056,7 +3275,10 @@ class ApiServerTestHandler(SoapDastHandler):
             except ValueError:
                 limit = 100
             limit = max(1, min(limit, 500))
-            self.send_json_api(200, login_audit_report(limit))
+            start_at = local_date_to_epoch(query.get("date_from", [""])[0])
+            end_at = local_date_to_epoch(query.get("date_to", [""])[0], end_of_day=True)
+            filters = {key: query.get(key, [""])[0].strip() for key in ("q", "user", "event", "status", "path")}
+            self.send_json_api(200, login_audit_report(limit, start_at=start_at, end_at=end_at, filters=filters))
             return
         if parsed.path == "/api/validate":
             self.rest_validate_token()
@@ -3101,7 +3323,7 @@ class ApiServerTestHandler(SoapDastHandler):
         if parsed.path == "/report":
             self.render_login_tracking_report(parsed)
             return
-        if parsed.path == "/login-audit":
+        if parsed.path in {"/login-audit", "/login/audit"}:
             self.render_login_audit_report(parsed)
             return
         if parsed.path == "/":
@@ -3144,6 +3366,7 @@ class ApiServerTestHandler(SoapDastHandler):
                     "audit": "/audit",
                     "login_tracking": "/login-tracking",
                     "login_audit": "/login-audit",
+                    "login_audit_alias": "/login/audit",
                     "executive_report": "/report",
                     "risk_signals": [
                         "jwt_alg_none",
@@ -3197,6 +3420,7 @@ class ApiServerTestHandler(SoapDastHandler):
 
         length = int(self.headers.get("Content-Length", "0"))
         raw_body = self.rfile.read(length).decode("utf-8", errors="replace")
+        self._last_request_body = raw_body
         requested_action = self.headers.get("SOAPAction", "").strip('"')
         self.log_interaction_event("soap_request_received", action=requested_action, request_body=raw_body)
         if "<!DOCTYPE" in raw_body.upper() or "<!ENTITY" in raw_body.upper():
@@ -3408,14 +3632,17 @@ class ApiServerTestHandler(SoapDastHandler):
         password = str(data.get("password", ""))
         user = USERS.get(username)
         if not user or user["password"] != password:
+            response_payload = {"error": "invalid_credentials"}
             self.log_auth_event(
                 "lab_rest_login",
                 "failure",
                 username=username,
                 error="invalid_credentials",
                 details={"duration_ms": round((time.perf_counter() - started_at) * 1000, 2)},
+                request_body=getattr(self, "_last_request_body", ""),
+                response_body=json.dumps(response_payload, indent=2),
             )
-            self.send_json_api(401, {"error": "invalid_credentials"})
+            self.send_json_api(401, response_payload)
             return
         access_token, refresh_token, session_id, claims = issue_tokens(username)
         fixed_session = self.headers.get("X-Fixed-Session-Id")
@@ -3424,6 +3651,14 @@ class ApiServerTestHandler(SoapDastHandler):
             access_token, claims = make_jwt(username, user["role"], fixed_session)
             session_id = fixed_session
         refresh_record = get_refresh_token_record(refresh_token) or {}
+        response_payload = {
+            "accessToken": access_token,
+            "refreshToken": refresh_token,
+            "sessionId": session_id,
+            "expiresAt": claims["exp"],
+            "tokenId": claims["jti"],
+            "testMode": True,
+        }
         self.log_auth_event(
             "lab_rest_login",
             "success",
@@ -3441,17 +3676,12 @@ class ApiServerTestHandler(SoapDastHandler):
                 "session_fixation_used": bool(fixed_session),
                 "duration_ms": round((time.perf_counter() - started_at) * 1000, 2),
             },
+            request_body=getattr(self, "_last_request_body", ""),
+            response_body=json.dumps(response_payload, indent=2),
         )
         self.send_json_api(
             200,
-            {
-                "accessToken": access_token,
-                "refreshToken": refresh_token,
-                "sessionId": session_id,
-                "expiresAt": claims["exp"],
-                "tokenId": claims["jti"],
-                "testMode": True,
-            },
+            response_payload,
             headers={"Set-Cookie": f"DASTSESSION={session_id}; Path=/"},
         )
 
@@ -3465,6 +3695,7 @@ class ApiServerTestHandler(SoapDastHandler):
         refresh_token = str(data.get("refreshToken") or data.get("refresh_token") or "")
         record = get_refresh_token_record(refresh_token)
         if not record:
+            response_payload = {"error": "refresh_token_not_found"}
             self.log_auth_event(
                 "lab_rest_refresh_token",
                 "failure",
@@ -3473,10 +3704,13 @@ class ApiServerTestHandler(SoapDastHandler):
                     "refresh_token_fingerprint": token_fingerprint(refresh_token),
                     "duration_ms": round((time.perf_counter() - started_at) * 1000, 2),
                 },
+                request_body=getattr(self, "_last_request_body", ""),
+                response_body=json.dumps(response_payload, indent=2),
             )
-            self.send_json_api(401, {"error": "refresh_token_not_found"})
+            self.send_json_api(401, response_payload)
             return
         if int(time.time()) >= int(record.get("expires_at", 0)):
+            response_payload = {"error": "refresh_token_expired"}
             self.log_auth_event(
                 "lab_rest_refresh_token",
                 "failure",
@@ -3488,11 +3722,22 @@ class ApiServerTestHandler(SoapDastHandler):
                     "refresh_token_expires_at": record.get("expires_at"),
                     "duration_ms": round((time.perf_counter() - started_at) * 1000, 2),
                 },
+                request_body=getattr(self, "_last_request_body", ""),
+                response_body=json.dumps(response_payload, indent=2),
             )
-            self.send_json_api(401, {"error": "refresh_token_expired"})
+            self.send_json_api(401, response_payload)
             return
         user = USERS[record["username"]]
         access_token, claims = make_jwt(record["username"], user["role"], record["session_id"])
+        response_payload = {
+            "accessToken": access_token,
+            "refreshToken": refresh_token,
+            "sessionId": record["session_id"],
+            "expiresAt": claims["exp"],
+            "tokenId": claims["jti"],
+            "rotated": False,
+            "security_note": "refresh token reuse allowed",
+        }
         self.log_auth_event(
             "lab_rest_refresh_token",
             "success",
@@ -3509,18 +3754,12 @@ class ApiServerTestHandler(SoapDastHandler):
                 "security_note": "refresh_token_reuse_allowed",
                 "duration_ms": round((time.perf_counter() - started_at) * 1000, 2),
             },
+            request_body=getattr(self, "_last_request_body", ""),
+            response_body=json.dumps(response_payload, indent=2),
         )
         self.send_json_api(
             200,
-            {
-                "accessToken": access_token,
-                "refreshToken": refresh_token,
-                "sessionId": record["session_id"],
-                "expiresAt": claims["exp"],
-                "tokenId": claims["jti"],
-                "rotated": False,
-                "security_note": "refresh token reuse allowed",
-            },
+            response_payload,
         )
 
     def rest_validate_token(self):
@@ -3990,20 +4229,25 @@ class ApiServerTestHandler(SoapDastHandler):
         except ValueError:
             limit = 100
         limit = max(1, min(limit, 500))
-        report = login_audit_report(limit)
-        summary = report["summary"]
-        events = report["events"]
-
-        def esc(value):
-            return html.escape("" if value is None else str(value), quote=True)
-
+        date_from = query.get("date_from", [""])[0].strip()
+        date_to = query.get("date_to", [""])[0].strip()
+        start_at = local_date_to_epoch(date_from)
+        end_at = local_date_to_epoch(date_to, end_of_day=True)
         filters = {
             "q": query.get("q", [""])[0].strip(),
             "user": query.get("user", [""])[0].strip(),
             "event": query.get("event", [""])[0].strip(),
             "status": query.get("status", [""])[0].strip(),
             "path": query.get("path", [""])[0].strip(),
+            "date_from": date_from,
+            "date_to": date_to,
         }
+        report = login_audit_report(limit, start_at=start_at, end_at=end_at, filters=filters)
+        summary = report["summary"]
+        events = report["events"]
+
+        def esc(value):
+            return html.escape("" if value is None else str(value), quote=True)
 
         def event_text(event):
             parts = [
@@ -4033,6 +4277,12 @@ class ApiServerTestHandler(SoapDastHandler):
                 return needle in str(event.get("event", "")).lower()
             if field == "path":
                 return needle in str(event.get("path", "")).lower()
+            if field in {"date_from", "date_to"}:
+                return True
+            if field == "user":
+                return needle in str(event.get("username", "")).lower()
+            if field == "status":
+                return needle in f"{event.get('status', '')} {event.get('http_status', '')}".lower()
             return needle in str(event.get(field, "")).lower()
 
         for field, value in filters.items():
@@ -4121,12 +4371,13 @@ class ApiServerTestHandler(SoapDastHandler):
     .metric span {{ display:block; color:var(--muted); font-size:13px; }}
     .metric strong {{ display:block; font-size:26px; margin-top:6px; }}
     .filter-box {{ background:#fff; border:1px solid var(--line); border-radius:8px; padding:14px; margin:18px 0; }}
-    .filters {{ display:grid; grid-template-columns:2fr repeat(4, 1fr) auto; gap:10px; align-items:end; }}
+    .filters {{ display:grid; grid-template-columns:2fr repeat(6, 1fr) auto; gap:10px; align-items:end; }}
     label {{ display:grid; gap:4px; color:var(--muted); font-size:12px; font-weight:700; }}
     input, select, button {{ min-height:36px; border:1px solid var(--line); border-radius:6px; padding:6px 8px; font-size:14px; }}
     button {{ background:#17202a; color:#fff; cursor:pointer; }}
     .toolbar {{ display:flex; gap:10px; align-items:center; margin:18px 0; flex-wrap:wrap; }}
     .toolbar a {{ color:#0645ad; text-decoration:none; font-weight:700; }}
+    .live-status {{ color:var(--muted); font-size:12px; }}
     .table-wrap {{ overflow:auto; max-height:72vh; border:1px solid var(--line); border-radius:8px; }}
     table {{ min-width:1700px; width:max-content; border-collapse:collapse; background:#fff; table-layout:auto; }}
     th, td {{ border-bottom:1px solid var(--line); padding:10px; text-align:left; vertical-align:top; font-size:13px; overflow-wrap:normal; }}
@@ -4162,11 +4413,14 @@ class ApiServerTestHandler(SoapDastHandler):
           <option value="401" {"selected" if filters["status"] == "401" else ""}>HTTP 401</option>
         </select></label>
         <label>Route<input name="path" value="{esc(filters["path"])}" placeholder="/soap/auth"></label>
+        <label>From<input type="date" name="date_from" value="{esc(filters["date_from"])}"></label>
+        <label>To<input type="date" name="date_to" value="{esc(filters["date_to"])}"></label>
         <button type="submit">Filter</button>
       </form>
     </section>
     <div class="toolbar">
-      <span>Showing {esc(len(events))} filtered events from the latest {esc(summary["returned_events"])} loaded events.</span>
+      <span id="event-count">Showing {esc(len(events))} filtered events from the latest {esc(summary["returned_events"])} loaded events.</span>
+      <span id="live-status" class="live-status">Live update enabled.</span>
       <a href="/login-audit?limit={limit}">Clear filters</a>
       <a href="/api/login-audit?limit={limit}{filter_query}">Technical JSON</a>
       <a href="/login-audit?limit=250{filter_query}">Show 250</a>
@@ -4180,10 +4434,108 @@ class ApiServerTestHandler(SoapDastHandler):
             <th>Result</th><th>Local time</th><th>Event</th><th>User</th><th>HTTP</th><th>Route</th><th>Source IP</th><th>User-Agent</th><th>Error</th><th>Request Body</th><th>Response Body</th>
           </tr>
         </thead>
-        <tbody>{rows_html}</tbody>
+        <tbody id="login-audit-rows">{rows_html}</tbody>
       </table>
     </div>
   </main>
+  <script>
+    const businessLabels = {{
+      lab_login: "Login",
+      lab_rest_login: "REST login",
+      lab_refresh_token: "Re-login refresh token",
+      lab_rest_refresh_token: "REST re-login refresh token",
+      logout: "Logout",
+      rest_logout: "REST logout",
+      soap_request_received: "SOAP request",
+      request_body_received: "REST request",
+      response_sent: "Response"
+    }};
+
+    function text(value) {{
+      return value === null || value === undefined ? "" : String(value);
+    }}
+
+    function escapeHtml(value) {{
+      return text(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }}
+
+    function statusClass(event) {{
+      const status = text(event.status).toLowerCase();
+      const httpStatus = Number(event.http_status || 0);
+      if (status === "success" || (httpStatus >= 200 && httpStatus < 300)) return "ok";
+      if (status === "failure" || httpStatus >= 400) return "bad";
+      return "warn";
+    }}
+
+    function businessLabel(event) {{
+      const name = text(event.event);
+      return businessLabels[name] || name.replace(/_/g, " ").replace(/\\b\\w/g, function(ch) {{ return ch.toUpperCase(); }});
+    }}
+
+    function bodyValue(event, rawKey, bodyKey, previewKey, lengthKey) {{
+      let value = event[rawKey] || event[bodyKey] || event[previewKey] || "";
+      if (!value && Number(event[lengthKey] || 0) === 0) {{
+        value = lengthKey.indexOf("request") === 0 ? "[no request body captured]" : "[no response body captured]";
+      }}
+      return value;
+    }}
+
+    function renderRows(events) {{
+      const rows = document.getElementById("login-audit-rows");
+      if (!rows) return;
+      if (!events.length) {{
+        rows.innerHTML = '<tr><td colspan="11">No login audit events match the current filters.</td></tr>';
+        return;
+      }}
+      rows.innerHTML = events.slice().reverse().map(function(event) {{
+        const css = statusClass(event);
+        const requestBody = bodyValue(event, "raw_request_body", "request_body", "request_body_preview", "request_body_length");
+        const responseBody = bodyValue(event, "raw_response_body", "response_body", "response_body_preview", "response_body_length");
+        return "<tr>" +
+          '<td><span class="pill ' + css + '">' + escapeHtml(event.status || event.http_status || "observed") + "</span></td>" +
+          "<td>" + escapeHtml(event.local_time) + "</td>" +
+          "<td>" + escapeHtml(businessLabel(event)) + "</td>" +
+          "<td>" + escapeHtml(event.username) + "</td>" +
+          "<td>" + escapeHtml(event.http_status) + "</td>" +
+          "<td>" + escapeHtml(text(event.method) + " " + text(event.path)) + "</td>" +
+          "<td>" + escapeHtml(event.client) + "</td>" +
+          '<td class="ua">' + escapeHtml(event.user_agent) + "</td>" +
+          "<td>" + escapeHtml(event.error) + "</td>" +
+          '<td class="body-preview"><details><summary>Request</summary><pre>' + escapeHtml(requestBody) + "</pre></details></td>" +
+          '<td class="body-preview"><details><summary>Response</summary><pre>' + escapeHtml(responseBody) + "</pre></details></td>" +
+          "</tr>";
+      }}).join("");
+    }}
+
+    async function refreshLoginAudit() {{
+      const params = new URLSearchParams(window.location.search);
+      if (!params.get("limit")) params.set("limit", "{esc(limit)}");
+      const status = document.getElementById("live-status");
+      try {{
+        const response = await fetch("/api/login-audit?" + params.toString(), {{ headers: {{ Accept: "application/json" }}, cache: "no-store" }});
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        const data = await response.json();
+        const events = data.events || [];
+        renderRows(events);
+        const count = document.getElementById("event-count");
+        if (count) {{
+          const returned = data.summary && data.summary.returned_events !== undefined ? data.summary.returned_events : events.length;
+          count.textContent = "Showing " + events.length + " filtered events from the latest " + returned + " loaded events.";
+        }}
+        if (status) status.textContent = "Live update OK: " + new Date().toLocaleTimeString();
+      }} catch (err) {{
+        if (status) status.textContent = "Live update paused: " + err.message;
+      }}
+    }}
+
+    refreshLoginAudit();
+    setInterval(refreshLoginAudit, 5000);
+  </script>
 </body>
 </html>"""
         self.send_html(200, page, headers={"X-Report-Source": "/login-audit"})
@@ -4364,14 +4716,17 @@ class ApiServerTestHandler(SoapDastHandler):
         password = xml_text(root, "Password")
         user = USERS.get(username)
         if not user or user["password"] != password:
+            response_body = soap_fault("Auth.InvalidCredentials", "Invalid username or password")
             self.log_auth_event(
                 "lab_login",
                 "failure",
                 username=username,
                 error="invalid_credentials",
                 details={"duration_ms": round((time.perf_counter() - started_at) * 1000, 2)},
+                request_body=getattr(self, "_last_request_body", ""),
+                response_body=response_body,
             )
-            self.send_body(401, soap_fault("Auth.InvalidCredentials", "Invalid username or password"))
+            self.send_body(401, response_body)
             return
 
         access_token, refresh_token, session_id, claims = issue_tokens(username)
@@ -4382,6 +4737,17 @@ class ApiServerTestHandler(SoapDastHandler):
             access_token, claims = make_jwt(username, user["role"], fixed_session)
             session_id = fixed_session
         refresh_record = get_refresh_token_record(refresh_token) or {}
+        response_body = unsafe_response_element(
+            "Login",
+            {
+                "AccessToken": access_token,
+                "RefreshToken": refresh_token,
+                "SessionId": session_id,
+                "ExpiresAt": claims["exp"],
+                "TokenId": claims["jti"],
+                "TestMode": "true",
+            },
+        )
         self.log_auth_event(
             "lab_login",
             "success",
@@ -4400,6 +4766,8 @@ class ApiServerTestHandler(SoapDastHandler):
                 "cookie_security_attributes": "missing_httponly_samesite",
                 "duration_ms": round((time.perf_counter() - started_at) * 1000, 2),
             },
+            request_body=getattr(self, "_last_request_body", ""),
+            response_body=response_body,
         )
 
         headers = {
@@ -4408,17 +4776,7 @@ class ApiServerTestHandler(SoapDastHandler):
         }
         self.send_body(
             200,
-            unsafe_response_element(
-                "Login",
-                {
-                    "AccessToken": access_token,
-                    "RefreshToken": refresh_token,
-                    "SessionId": session_id,
-                    "ExpiresAt": claims["exp"],
-                    "TokenId": claims["jti"],
-                    "TestMode": "true",
-                },
-            ),
+            response_body,
             headers=headers,
         )
 
@@ -4496,6 +4854,7 @@ class ApiServerTestHandler(SoapDastHandler):
                     refresh_token_source = "recent_client_login_fallback"
                     break
         if not record:
+            response_body = soap_fault("Auth.RefreshFailed", "refresh_token_not_found")
             self.log_auth_event(
                 "lab_refresh_token",
                 "failure",
@@ -4506,10 +4865,13 @@ class ApiServerTestHandler(SoapDastHandler):
                     "body_refresh_token_present": bool(refresh_token.strip()),
                     "duration_ms": round((time.perf_counter() - started_at) * 1000, 2),
                 },
+                request_body=getattr(self, "_last_request_body", ""),
+                response_body=response_body,
             )
-            self.send_body(401, soap_fault("Auth.RefreshFailed", "refresh_token_not_found"))
+            self.send_body(401, response_body)
             return
         if int(time.time()) >= int(record.get("expires_at", 0)):
+            response_body = soap_fault("Auth.RefreshFailed", "refresh_token_expired")
             self.log_auth_event(
                 "lab_refresh_token",
                 "failure",
@@ -4522,13 +4884,27 @@ class ApiServerTestHandler(SoapDastHandler):
                     "refresh_token_expires_at": record.get("expires_at"),
                     "duration_ms": round((time.perf_counter() - started_at) * 1000, 2),
                 },
+                request_body=getattr(self, "_last_request_body", ""),
+                response_body=response_body,
             )
-            self.send_body(401, soap_fault("Auth.RefreshFailed", "refresh_token_expired"))
+            self.send_body(401, response_body)
             return
 
         # SecurityNote: refresh token is reusable and not rotated.
         user = USERS[record["username"]]
         access_token, claims = make_jwt(record["username"], user["role"], record["session_id"])
+        response_body = unsafe_response_element(
+            "RefreshToken",
+            {
+                "AccessToken": access_token,
+                "RefreshToken": refresh_token,
+                "SessionId": record["session_id"],
+                "ExpiresAt": claims["exp"],
+                "TokenId": claims["jti"],
+                "Rotated": "false",
+                "SecurityNote": "refresh token reuse allowed",
+            },
+        )
         self.log_auth_event(
             "lab_refresh_token",
             "success",
@@ -4546,21 +4922,12 @@ class ApiServerTestHandler(SoapDastHandler):
                 "security_note": "refresh_token_reuse_allowed",
                 "duration_ms": round((time.perf_counter() - started_at) * 1000, 2),
             },
+            request_body=getattr(self, "_last_request_body", ""),
+            response_body=response_body,
         )
         self.send_body(
             200,
-            unsafe_response_element(
-                "RefreshToken",
-                {
-                    "AccessToken": access_token,
-                    "RefreshToken": refresh_token,
-                    "SessionId": record["session_id"],
-                    "ExpiresAt": claims["exp"],
-                    "TokenId": claims["jti"],
-                    "Rotated": "false",
-                    "SecurityNote": "refresh token reuse allowed",
-                },
-            ),
+            response_body,
         )
 
     def soap_validate_token(self, root):

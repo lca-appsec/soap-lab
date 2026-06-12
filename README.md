@@ -32,10 +32,12 @@ Static OpenAPI files for import:
 
 Relational storage:
 
-- The lab uses SQLite by default at `/tmp/rest_soap_labs.db`.
-- Override the path with `SOAP_DAST_DB_PATH`.
+- The lab uses SQLite by default at `data/rest_soap_labs.db` when running locally.
+- Override the path with `SOAP_DAST_DB_PATH`. The Azure Container Apps deployment uses `/data/rest_soap_labs.db`.
 - On Azure Container Apps with multiple replicas, keep sticky sessions enabled. Do not put SQLite on Azure Files for this lab; simultaneous replica startup can lock the database. Use an external database for true cross-replica persistence.
-- Product catalog records, e-commerce records, and XSS comments are stored in relational tables.
+- Product catalog records, e-commerce records, XSS comments, and login audit records are stored in relational tables.
+- Login audit records are persisted in the `login_audit_events` table and can be queried later through `/login-audit`, `/login/audit`, or `/api/login-audit`.
+- Date filters use local lab time: `/login-audit?date_from=2026-06-12&date_to=2026-06-12&user=veracode`.
 
 DAST authentication scripts and validation helpers:
 
@@ -734,10 +736,12 @@ Arquivos OpenAPI estaticos para importar:
 
 Armazenamento relacional:
 
-- O laboratorio usa SQLite por padrao em `/tmp/rest_soap_labs.db`.
-- Altere o caminho com `SOAP_DAST_DB_PATH`.
+- O laboratorio usa SQLite por padrao em `data/rest_soap_labs.db` quando roda localmente.
+- Altere o caminho com `SOAP_DAST_DB_PATH`. O deploy no Azure Container Apps usa `/data/rest_soap_labs.db`.
 - No Azure Container Apps com multiplas replicas, mantenha sticky sessions habilitado. Nao coloque SQLite em Azure Files para este lab; a inicializacao simultanea das replicas pode travar o banco. Use banco externo para persistencia real entre replicas.
-- Catalogo de produtos, registros de e-commerce e comentarios XSS ficam em tabelas relacionais.
+- Catalogo de produtos, registros de e-commerce, comentarios XSS e registros de login audit ficam em tabelas relacionais.
+- Os registros de login audit sao persistidos na tabela `login_audit_events` e podem ser consultados depois por `/login-audit`, `/login/audit` ou `/api/login-audit`.
+- Os filtros de data usam o horario local do lab: `/login-audit?date_from=2026-06-12&date_to=2026-06-12&user=veracode`.
 
 Scripts de autenticacao DAST e validadores:
 

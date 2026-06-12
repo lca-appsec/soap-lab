@@ -7,7 +7,7 @@
   },
   "servers": [
     {
-      "url": "https://ca-rest-soap-labs.wonderfulcoast-2578bc9b.eastus.azurecontainerapps.io"
+      "url": "https://ca-rest-soap-labs.wonderfulcoast-2578bc9b.eastus.azurecontainerapps.io:8089"
     }
   ],
   "components": {
@@ -2056,6 +2056,84 @@
     "/login-audit": {
       "get": {
         "summary": "HTML login, refresh, and logout audit report",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            },
+            "example": 100
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "refresh"
+          },
+          {
+            "name": "user",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "veracode"
+          },
+          {
+            "name": "event",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "refresh"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "success"
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "/soap/refreshtoken"
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "example": "2026-06-12"
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "example": "2026-06-12"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Human-readable login audit report"
@@ -2081,6 +2159,136 @@
       },
       "options": {
         "summary": "OPTIONS verb discovery for /login-audit",
+        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
+        "responses": {
+          "204": {
+            "description": "Allow header lists: GET, HEAD, OPTIONS",
+            "headers": {
+              "Allow": {
+                "description": "Methods accepted by this route",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "GET, HEAD, OPTIONS"
+              },
+              "Access-Control-Allow-Methods": {
+                "description": "CORS method discovery header",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "GET, HEAD, OPTIONS"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/login/audit": {
+      "get": {
+        "summary": "Alias for HTML login, refresh, and logout audit report",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            },
+            "example": 100
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "refresh"
+          },
+          {
+            "name": "user",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "veracode"
+          },
+          {
+            "name": "event",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "refresh"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "success"
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "/soap/refreshtoken"
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "example": "2026-06-12"
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "example": "2026-06-12"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Human-readable login audit report"
+          }
+        }
+      },
+      "x-accepted-verbs": [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "head": {
+        "summary": "HEAD metadata for /login/audit",
+        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
+        "responses": {
+          "200": {
+            "description": "Headers only; Content-Type is application/xml"
+          },
+          "404": {
+            "description": "Route not found"
+          }
+        }
+      },
+      "options": {
+        "summary": "OPTIONS verb discovery for /login/audit",
         "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
         "responses": {
           "204": {

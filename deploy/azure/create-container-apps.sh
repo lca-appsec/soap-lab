@@ -71,7 +71,7 @@ az containerapp update \
   --max-replicas "${MAX_REPLICAS}" \
   --cpu "${CONTAINER_CPU}" \
   --memory "${CONTAINER_MEMORY}" \
-  --set-env-vars SOAP_DAST_HOST=0.0.0.0 SOAP_DAST_PORT=8089 SOAP_DAST_PUBLIC_HOST="${VULN_FQDN}" SOAP_DAST_PUBLIC_PORT=443 SOAP_DAST_DB_PATH=/tmp/rest_soap_labs.db >/dev/null
+  --set-env-vars SOAP_DAST_HOST=0.0.0.0 SOAP_DAST_PORT=8089 SOAP_DAST_PUBLIC_HOST="${VULN_FQDN}" SOAP_DAST_PUBLIC_PORT=443 SOAP_DAST_DB_PATH=/data/rest_soap_labs.db >/dev/null
 
 az containerapp ingress sticky-sessions set \
   --name "${CONTAINER_APP_NAME}" \

@@ -12,16 +12,24 @@ properties:
       maxReplicas: 1
     containers:
       - name: ca-rest-soap-labs
-        image: restsoaplabs.azurecr.io/rest-soap-labs:srm-simple-audit-filters-20260612
+        image: restsoaplabs.azurecr.io/rest-soap-labs:login-audit-persist-live-bodies-20260612
         env:
           - name: SOAP_DAST_HOST
             value: 0.0.0.0
+          - name: SOAP_DAST_PORT
+            value: "8089"
           - name: SOAP_DAST_VULN_PORT
             value: "8089"
+          - name: SOAP_DAST_PUBLIC_HOST
+            value: ca-rest-soap-labs.wonderfulcoast-2578bc9b.eastus.azurecontainerapps.io
+          - name: SOAP_DAST_PUBLIC_PORT
+            value: "443"
+          - name: SOAP_DAST_PUBLIC_SCHEME
+            value: https
           - name: SOAP_DAST_VULN_PUBLIC_PORT
             value: "443"
           - name: SOAP_DAST_DB_PATH
-            value: /tmp/rest_soap_labs.db
+            value: /data/rest_soap_labs.db
         resources:
           cpu: 2.0
           memory: 4Gi
