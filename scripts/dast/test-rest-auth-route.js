@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 const baseUrl = process.env.REST_BASE_URL || "https://ca-rest-soap-labs.wonderfulcoast-2578bc9b.eastus.azurecontainerapps.io";
-const username = process.env.REST_USERNAME || "admin_aurora";
-const password = process.env.REST_PASSWORD || "adminpass1";
+const username = process.env.REST_USERNAME || "veracode";
+const password = process.env.REST_PASSWORD || "veracode";
 
 async function postJson(path, body, headers = {}) {
   const response = await fetch(`${baseUrl}${path}`, {

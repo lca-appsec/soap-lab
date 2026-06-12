@@ -7,8 +7,8 @@ SOAPAction: Login
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:lab="urn:soap-dast-lab">
   <soap:Body>
     <lab:Login>
-      <lab:Username>admin_aurora</lab:Username>
-      <lab:Password>adminpass1</lab:Password>
+      <lab:Username>veracode</lab:Username>
+      <lab:Password>veracode</lab:Password>
     </lab:Login>
   </soap:Body>
 </soap:Envelope>

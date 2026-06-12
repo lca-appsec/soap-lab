@@ -1,8 +1,8 @@
 var bearerToken = null;
 var refreshToken = null;
 var tokenExpiresAt = null;
-var defaultUsername = "admin_aurora";
-var defaultPassword = "adminpass1";
+var defaultUsername = "veracode";
+var defaultPassword = "veracode";
 var defaultForwardedFor = "203.0.113.10";
 
 function run() {

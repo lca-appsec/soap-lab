@@ -84,7 +84,7 @@ Admin users:
 
 | Username | Password |
 | --- | --- |
-| `admin_aurora` | `adminpass1` |
+| `veracode` | `veracode` |
 | `admin_boreal` | `adminpass2` |
 | `admin_cosmos` | `adminpass3` |
 | `admin_delta` | `adminpass4` |
@@ -162,7 +162,7 @@ openapi/rest-openapi.json
 ```bash
 curl -s -X POST 'http://127.0.0.1:8089/api/login' \
   -H 'Content-Type: application/json' \
-  --data '{"username":"admin_aurora","password":"adminpass1"}'
+  --data '{"username":"veracode","password":"veracode"}'
 ```
 
 The response returns:
@@ -354,8 +354,8 @@ curl -s -X POST 'http://127.0.0.1:8089/soap/auth' \
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:lab="urn:soap-dast-lab">
   <soap:Body>
     <lab:Login>
-      <lab:Username>admin_aurora</lab:Username>
-      <lab:Password>adminpass1</lab:Password>
+      <lab:Username>veracode</lab:Username>
+      <lab:Password>veracode</lab:Password>
     </lab:Login>
   </soap:Body>
 </soap:Envelope>'
@@ -786,7 +786,7 @@ Usuarios admin:
 
 | Usuario | Senha |
 | --- | --- |
-| `admin_aurora` | `adminpass1` |
+| `veracode` | `veracode` |
 | `admin_boreal` | `adminpass2` |
 | `admin_cosmos` | `adminpass3` |
 | `admin_delta` | `adminpass4` |
@@ -864,7 +864,7 @@ openapi/rest-openapi.json
 ```bash
 curl -s -X POST 'http://127.0.0.1:8089/api/login' \
   -H 'Content-Type: application/json' \
-  --data '{"username":"admin_aurora","password":"adminpass1"}'
+  --data '{"username":"veracode","password":"veracode"}'
 ```
 
 A resposta retorna:
@@ -1056,8 +1056,8 @@ curl -s -X POST 'http://127.0.0.1:8089/soap/auth' \
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:lab="urn:soap-dast-lab">
   <soap:Body>
     <lab:Login>
-      <lab:Username>admin_aurora</lab:Username>
-      <lab:Password>adminpass1</lab:Password>
+      <lab:Username>veracode</lab:Username>
+      <lab:Password>veracode</lab:Password>
     </lab:Login>
   </soap:Body>
 </soap:Envelope>'

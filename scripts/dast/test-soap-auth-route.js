@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 const baseUrl = process.env.SOAP_BASE_URL || "http://127.0.0.1:8099";
-const username = process.env.SOAP_USERNAME || "admin_aurora";
-const password = process.env.SOAP_PASSWORD || "adminpass1";
+const username = process.env.SOAP_USERNAME || "veracode";
+const password = process.env.SOAP_PASSWORD || "veracode";
 
 function tagValue(xml, tagName) {
   const pattern = new RegExp(`<(?:[A-Za-z0-9_]+:)?${tagName}(?:\\s[^>]*)?>([\\s\\S]*?)</(?:[A-Za-z0-9_]+:)?${tagName}>`, "i");

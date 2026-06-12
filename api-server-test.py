@@ -35,8 +35,8 @@ LOCAL_TIMEZONE_NAME = os.environ.get("SOAP_DAST_TIMEZONE", "America/Sao_Paulo")
 DB_PATH = os.environ.get("SOAP_DAST_DB_PATH", "/tmp/rest_soap_labs.db")
 
 USERS = {
-    "admin_aurora": {
-        "password": "adminpass1",
+    "veracode": {
+        "password": "veracode",
         "role": "admin",
         "account_id": "9001",
         "balance": 99250.00,
@@ -180,7 +180,7 @@ RISK_CUSTOMERS = [
     {"account_id": "1001", "username": "user_apollo", "full_name": "Apollo Santos", "email": "apollo@example.test", "tier": "silver", "balance": 1280.50, "secret_note": "demo-pin-1001"},
     {"account_id": "1002", "username": "user_bianca", "full_name": "Bianca Lima", "email": "bianca@example.test", "tier": "gold", "balance": 940.25, "secret_note": "demo-pin-1002"},
     {"account_id": "1003", "username": "user_cairo", "full_name": "Cairo Rocha", "email": "cairo@example.test", "tier": "bronze", "balance": 2100.00, "secret_note": "demo-pin-1003"},
-    {"account_id": "9001", "username": "admin_aurora", "full_name": "Aurora Admin", "email": "aurora@example.test", "tier": "admin", "balance": 99250.00, "secret_note": "admin-note-9001"},
+    {"account_id": "9001", "username": "veracode", "full_name": "Veracode Admin", "email": "veracode@example.test", "tier": "admin", "balance": 99250.00, "secret_note": "admin-note-9001"},
     {"account_id": "9005", "username": "admin_equinox", "full_name": "Equinox Admin", "email": "equinox@example.test", "tier": "admin", "balance": 59100.10, "secret_note": "admin-note-9005"},
 ]
 
@@ -2327,8 +2327,101 @@ def x_forwarded_for_parameter():
     }
 
 
-def rest_openapi_spec():
+def head_operation(summary, content_type="application/json"):
     return {
+        "summary": summary,
+        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
+        "responses": {
+            "200": {
+                "description": f"Headers only; Content-Type is {content_type}",
+            },
+            "404": {"description": "Route not found"},
+        },
+    }
+
+
+def options_operation(summary, allow):
+    return {
+        "summary": summary,
+        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
+        "responses": {
+            "204": {
+                "description": f"Allow header lists: {allow}",
+                "headers": {
+                    "Allow": {
+                        "description": "Methods accepted by this route",
+                        "schema": {"type": "string"},
+                        "example": allow,
+                    },
+                    "Access-Control-Allow-Methods": {
+                        "description": "CORS method discovery header",
+                        "schema": {"type": "string"},
+                        "example": allow,
+                    },
+                },
+            }
+        },
+    }
+
+
+REST_ALLOWED_VERBS_BY_PATH = {
+    "/api/login": "POST, HEAD, OPTIONS",
+    "/api/refresh": "POST, HEAD, OPTIONS",
+    "/api/logout": "POST, HEAD, OPTIONS",
+    "/api/validate": "GET, HEAD, OPTIONS",
+    "/api/admin": "GET, HEAD, OPTIONS",
+    "/api/user": "GET, HEAD, OPTIONS",
+    "/api/products": "GET, POST, PUSH, PATCH, UPDATE, DELETE, HEAD, OPTIONS",
+    "/api/products/push": "POST, HEAD, OPTIONS",
+    "/api/risk/search": "GET, HEAD, OPTIONS",
+    "/api/risk/echo": "GET, POST, PATCH, UPDATE, HEAD, OPTIONS",
+    "/api/risk/account": "GET, HEAD, OPTIONS",
+    "/comments": "GET, POST, HEAD, OPTIONS",
+    "/report": "GET, HEAD, OPTIONS",
+    "/login-audit": "GET, HEAD, OPTIONS",
+    "/health": "GET, HEAD, OPTIONS",
+}
+
+
+XML_ALLOWED_VERBS_BY_PATH = {
+    "/soap?wsdl": "GET, HEAD, OPTIONS",
+    "/soap": "GET, POST, HEAD, OPTIONS",
+    "/soap/auth": "GET, POST, HEAD, OPTIONS",
+    "/soap/refreshtoken": "GET, POST, HEAD, OPTIONS",
+    "/admin": "GET, HEAD, OPTIONS",
+    "/user": "GET, HEAD, OPTIONS",
+    "/products": "GET, POST, PUSH, PUT, PATCH, UPDATE, DELETE, HEAD, OPTIONS",
+    "/comments": "GET, POST, HEAD, OPTIONS",
+    "/audit": "GET, HEAD, OPTIONS",
+    "/login-tracking": "GET, HEAD, OPTIONS",
+    "/login-audit": "GET, HEAD, OPTIONS",
+    "/report": "GET, HEAD, OPTIONS",
+    "/health": "GET, HEAD, OPTIONS",
+}
+
+
+def add_verb_discovery_to_openapi(spec, explicit_allow=None, default_content_type="application/json"):
+    explicit_allow = explicit_allow or {}
+    standard_methods = {"get", "post", "put", "delete", "patch", "head", "options", "trace"}
+    for path, path_item in spec.get("paths", {}).items():
+        if not isinstance(path_item, dict):
+            continue
+        allow = explicit_allow.get(path)
+        if not allow:
+            methods = [method.upper() for method in path_item if method in standard_methods]
+            if "HEAD" not in methods:
+                methods.append("HEAD")
+            if "OPTIONS" not in methods:
+                methods.append("OPTIONS")
+            allow = ", ".join(methods)
+        path_item["x-accepted-verbs"] = [verb.strip() for verb in allow.split(",")]
+        path_item["head"] = head_operation(f"HEAD metadata for {path}", default_content_type)
+        path_item["options"] = options_operation(f"OPTIONS verb discovery for {path}", allow)
+    return spec
+
+
+def rest_openapi_spec():
+    spec = {
         "openapi": "3.0.3",
         "info": {
             "title": "SOAP and REST DAST Lab - REST JSON API",
@@ -2376,7 +2469,12 @@ def rest_openapi_spec():
                     "parameters": [x_forwarded_for_parameter()],
                     "requestBody": {
                         "required": True,
-                        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LoginRequest"}}},
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/LoginRequest"},
+                                "example": {"username": "veracode", "password": "veracode"},
+                            }
+                        },
                     },
                     "responses": {"200": {"description": "Tokens issued"}, "401": {"description": "Invalid credentials"}},
                 }
@@ -2584,10 +2682,11 @@ def rest_openapi_spec():
             "/health": {"get": {"summary": "Container health check", "responses": {"200": {"description": "Application is running"}}}},
         },
     }
+    return add_verb_discovery_to_openapi(spec, REST_ALLOWED_VERBS_BY_PATH)
 
 
 def xml_openapi_spec():
-    return {
+    spec = {
         "openapi": "3.0.3",
         "info": {
             "title": "SOAP and REST DAST Lab - XML/SOAP API",
@@ -2674,7 +2773,7 @@ def xml_openapi_spec():
                         "content": {
                             "text/xml": {
                                 "schema": {"type": "string"},
-                                "example": "<?xml version=\"1.0\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\"><soap:Body><lab:Login><lab:Username>admin_aurora</lab:Username><lab:Password>adminpass1</lab:Password></lab:Login></soap:Body></soap:Envelope>",
+                                "example": "<?xml version=\"1.0\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\"><soap:Body><lab:Login><lab:Username>veracode</lab:Username><lab:Password>veracode</lab:Password></lab:Login></soap:Body></soap:Envelope>",
                             },
                             "application/xml": {"schema": {"type": "string"}},
                         },
@@ -2771,6 +2870,7 @@ def xml_openapi_spec():
             "/health": {"get": {"summary": "Container health check", "responses": {"200": {"description": "Application is running"}}}},
         },
     }
+    return add_verb_discovery_to_openapi(spec, XML_ALLOWED_VERBS_BY_PATH, default_content_type="application/xml")
 
 
 class ApiServerTestHandler(SoapDastHandler):
@@ -2836,6 +2936,12 @@ class ApiServerTestHandler(SoapDastHandler):
 
     def do_HEAD(self):
         parsed = urlparse(self.path)
+        is_dynamic_catalog = bool(
+            category_slug_from_path(parsed.path, "/api/products/")
+            or category_slug_from_path(parsed.path, "/products/")
+            or category_slug_from_path(parsed.path, "/api/ecommerce/")
+            or category_slug_from_path(parsed.path, "/ecommerce/")
+        )
         if parsed.path in {
             "/",
             "/health",
@@ -2846,7 +2952,11 @@ class ApiServerTestHandler(SoapDastHandler):
             "/api/admin",
             "/api/user",
             "/api/products",
+            "/api/products/push",
             "/api/logout",
+            "/api/login",
+            "/api/refresh",
+            "/api/validate",
             "/api/audit",
             "/api/login-tracking",
             "/api/login-audit",
@@ -2864,9 +2974,9 @@ class ApiServerTestHandler(SoapDastHandler):
             "/soap",
             "/soap/auth",
             "/soap/refreshtoken",
-        }:
+        } or is_dynamic_catalog:
             content_type = "text/html" if parsed.path in {"/comments", "/report", "/login-audit"} else "application/json"
-            if parsed.path in {"/audit", "/login-tracking", "/admin", "/user", "/products", "/soap", "/soap/auth", "/soap/refreshtoken"}:
+            if parsed.path in {"/audit", "/login-tracking", "/admin", "/user", "/products", "/soap", "/soap/auth", "/soap/refreshtoken"} or parsed.path.startswith(("/products/", "/ecommerce/")):
                 content_type = "application/xml"
             self.send_head_only(200, content_type=content_type)
             return
@@ -3269,16 +3379,20 @@ class ApiServerTestHandler(SoapDastHandler):
     def do_OPTIONS(self):
         parsed = urlparse(self.path)
         allowed_by_path = {
-            "/api/products": "GET, POST, PUSH, PATCH, UPDATE, DELETE, OPTIONS",
-            "/products": "GET, POST, PUSH, PUT, PATCH, UPDATE, DELETE, OPTIONS",
-            "/api/risk/search": "GET, OPTIONS",
-            "/api/risk/echo": "GET, POST, PATCH, UPDATE, OPTIONS",
-            "/api/risk/account": "GET, OPTIONS",
-            "/soap": "GET, POST, OPTIONS",
-            "/soap/auth": "GET, POST, OPTIONS",
-            "/soap/refreshtoken": "GET, POST, OPTIONS",
+            **REST_ALLOWED_VERBS_BY_PATH,
+            **XML_ALLOWED_VERBS_BY_PATH,
+            "/": "GET, HEAD, OPTIONS",
+            "/api": "GET, HEAD, OPTIONS",
+            "/swagger": "GET, HEAD, OPTIONS",
+            "/swagger/rest.json": "GET, HEAD, OPTIONS",
+            "/swagger/xml.json": "GET, HEAD, OPTIONS",
         }
-        allow = allowed_by_path.get(parsed.path, "GET, POST, OPTIONS")
+        if category_slug_from_path(parsed.path, "/api/products/") or category_slug_from_path(parsed.path, "/api/ecommerce/"):
+            allow = "GET, HEAD, OPTIONS"
+        elif category_slug_from_path(parsed.path, "/products/") or category_slug_from_path(parsed.path, "/ecommerce/"):
+            allow = "GET, HEAD, OPTIONS"
+        else:
+            allow = allowed_by_path.get(parsed.path, "GET, HEAD, OPTIONS")
         self.log_interaction_event(
             "options_discovery",
             status=204,

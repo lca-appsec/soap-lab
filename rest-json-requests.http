@@ -12,8 +12,8 @@ POST http://127.0.0.1:8089/api/login
 Content-Type: application/json
 
 {
-  "username": "admin_aurora",
-  "password": "adminpass1"
+  "username": "veracode",
+  "password": "veracode"
 }
 
 ### REST validate token
