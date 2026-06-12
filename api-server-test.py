@@ -13,7 +13,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from http import cookies
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 from xml.etree import ElementTree
 
 try:
@@ -2316,17 +2316,6 @@ def named_product_xml_examples(products, summary_prefix):
     }
 
 
-def x_forwarded_for_parameter():
-    return {
-        "name": "X-Forwarded-For",
-        "in": "header",
-        "required": False,
-        "schema": {"type": "string"},
-        "example": "203.0.113.10",
-        "description": "Optional source IP evidence header captured by /login-audit.",
-    }
-
-
 def head_operation(summary, content_type="application/json"):
     return {
         "summary": summary,
@@ -2466,7 +2455,6 @@ def rest_openapi_spec():
             "/api/login": {
                 "post": {
                     "summary": "Login and receive JWT, refresh token, and session id",
-                    "parameters": [x_forwarded_for_parameter()],
                     "requestBody": {
                         "required": True,
                         "content": {
@@ -2482,7 +2470,6 @@ def rest_openapi_spec():
             "/api/refresh": {
                 "post": {
                     "summary": "Issue a new dynamic JWT using a reusable reusable refresh token",
-                    "parameters": [x_forwarded_for_parameter()],
                     "requestBody": {
                         "required": True,
                         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RefreshRequest"}}},
@@ -2494,7 +2481,6 @@ def rest_openapi_spec():
                 "post": {
                     "summary": "Logout the current REST session and optionally deactivate the supplied refresh token",
                     "security": [{"bearerAuth": []}],
-                    "parameters": [x_forwarded_for_parameter()],
                     "requestBody": {
                         "required": False,
                         "content": {
@@ -2723,7 +2709,6 @@ def xml_openapi_spec():
                                 ],
                             },
                         },
-                        x_forwarded_for_parameter(),
                     ],
                     "requestBody": {
                         "required": True,
@@ -2766,7 +2751,6 @@ def xml_openapi_spec():
                             "required": True,
                             "schema": {"type": "string", "enum": ["Login", "ValidateToken"]},
                         },
-                        x_forwarded_for_parameter(),
                     ],
                     "requestBody": {
                         "required": True,
@@ -2792,7 +2776,6 @@ def xml_openapi_spec():
                             "required": True,
                             "schema": {"type": "string", "enum": ["RefreshToken"]},
                         },
-                        x_forwarded_for_parameter(),
                     ],
                     "requestBody": {
                         "required": True,
@@ -3401,7 +3384,7 @@ class ApiServerTestHandler(SoapDastHandler):
         self.send_response(204)
         self.send_header("Allow", allow)
         self.send_header("Access-Control-Allow-Methods", allow)
-        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type, SOAPAction, X-Session-Token, X-HTTP-Method-Override, X-Forwarded-For")
+        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type, SOAPAction, X-Session-Token, X-HTTP-Method-Override")
         self.send_header("Access-Control-Max-Age", "60")
         self.send_header("X-DAST-Lab", "verb-discovery")
         self.end_headers()
@@ -4014,6 +3997,47 @@ class ApiServerTestHandler(SoapDastHandler):
         def esc(value):
             return html.escape("" if value is None else str(value), quote=True)
 
+        filters = {
+            "q": query.get("q", [""])[0].strip(),
+            "user": query.get("user", [""])[0].strip(),
+            "event": query.get("event", [""])[0].strip(),
+            "status": query.get("status", [""])[0].strip(),
+            "path": query.get("path", [""])[0].strip(),
+        }
+
+        def event_text(event):
+            parts = [
+                event.get("event", ""),
+                event.get("username", ""),
+                event.get("role", ""),
+                event.get("status", ""),
+                event.get("error", ""),
+                event.get("method", ""),
+                event.get("path", ""),
+                event.get("client", ""),
+                event.get("user_agent", ""),
+                event.get("request_body", ""),
+                event.get("response_body", ""),
+                event.get("request_body_preview", ""),
+                event.get("response_body_preview", ""),
+            ]
+            return " ".join(str(part).lower() for part in parts)
+
+        def matches_filter(event, field, value):
+            if not value:
+                return True
+            needle = value.lower()
+            if field == "q":
+                return needle in event_text(event)
+            if field == "event":
+                return needle in str(event.get("event", "")).lower()
+            if field == "path":
+                return needle in str(event.get("path", "")).lower()
+            return needle in str(event.get(field, "")).lower()
+
+        for field, value in filters.items():
+            events = [event for event in events if matches_filter(event, field, value)]
+
         def status_class(event):
             status = str(event.get("status", "")).lower()
             http_status = int(event.get("http_status") or 0)
@@ -4037,28 +4061,6 @@ class ApiServerTestHandler(SoapDastHandler):
                 "response_sent": "Response",
             }
             return labels.get(name, name.replace("_", " ").title())
-
-        def detail_text(event):
-            details = event.get("details")
-            if not isinstance(details, dict):
-                return ""
-            interesting = []
-            for key in (
-                "duration_ms",
-                "refresh_token_source",
-                "access_token_fingerprint",
-                "refresh_token_fingerprint",
-                "new_access_token_fingerprint",
-                "refresh_rotated",
-                "access_token_ttl_seconds",
-                "refresh_token_ttl_seconds",
-                "security_note",
-                "risk_signal",
-                "test_mode",
-            ):
-                if key in details:
-                    interesting.append(f"{key}: {details[key]}")
-            return "; ".join(interesting)
 
         cards = [
             ("Login success", summary["login_success"]),
@@ -4087,21 +4089,20 @@ class ApiServerTestHandler(SoapDastHandler):
                 f"<td>{esc(event.get('local_time'))}</td>"
                 f"<td>{esc(business_label(event))}</td>"
                 f"<td>{esc(event.get('username', ''))}</td>"
-                f"<td>{esc(event.get('role', ''))}</td>"
                 f"<td>{esc(event.get('http_status', ''))}</td>"
                 f"<td>{esc(event.get('method', ''))} {esc(event.get('path', ''))}</td>"
                 f"<td>{esc(event.get('client', ''))}</td>"
-                f"<td>{esc(event.get('destination', ''))}</td>"
-                f"<td>{esc(event.get('x_forwarded_for', ''))}</td>"
                 f"<td class=\"ua\">{esc(event.get('user_agent', ''))}</td>"
                 f"<td>{esc(event.get('error', ''))}</td>"
-                f"<td class=\"details\">{esc(detail_text(event))}</td>"
-                f"<td class=\"body-preview\"><pre>{esc(request_body)}</pre></td>"
-                f"<td class=\"body-preview\"><pre>{esc(response_body)}</pre></td>"
+                f"<td class=\"body-preview\"><details><summary>Request</summary><pre>{esc(request_body)}</pre></details></td>"
+                f"<td class=\"body-preview\"><details><summary>Response</summary><pre>{esc(response_body)}</pre></details></td>"
                 "</tr>"
             )
-        rows_html = "\n".join(rows) or "<tr><td colspan=\"15\">No login audit events have been recorded yet.</td></tr>"
+        rows_html = "\n".join(rows) or "<tr><td colspan=\"11\">No login audit events match the current filters.</td></tr>"
         generated_at = local_time_fields(now())["local_time"]
+        filter_query = urlencode({key: value for key, value in filters.items() if value})
+        if filter_query:
+            filter_query = "&" + filter_query
         page = f"""<!doctype html>
 <html lang="en">
 <head>
@@ -4119,20 +4120,25 @@ class ApiServerTestHandler(SoapDastHandler):
     .metric {{ background:#fff; border:1px solid var(--line); border-radius:8px; padding:14px; }}
     .metric span {{ display:block; color:var(--muted); font-size:13px; }}
     .metric strong {{ display:block; font-size:26px; margin-top:6px; }}
-    .note {{ background:#fff; border-left:4px solid #2b6cb0; padding:14px 16px; margin:18px 0; }}
+    .filter-box {{ background:#fff; border:1px solid var(--line); border-radius:8px; padding:14px; margin:18px 0; }}
+    .filters {{ display:grid; grid-template-columns:2fr repeat(4, 1fr) auto; gap:10px; align-items:end; }}
+    label {{ display:grid; gap:4px; color:var(--muted); font-size:12px; font-weight:700; }}
+    input, select, button {{ min-height:36px; border:1px solid var(--line); border-radius:6px; padding:6px 8px; font-size:14px; }}
+    button {{ background:#17202a; color:#fff; cursor:pointer; }}
     .toolbar {{ display:flex; gap:10px; align-items:center; margin:18px 0; flex-wrap:wrap; }}
     .toolbar a {{ color:#0645ad; text-decoration:none; font-weight:700; }}
-    .table-wrap {{ overflow:auto; max-height:72vh; border:1px solid var(--line); }}
-    table {{ min-width:3000px; width:max-content; border-collapse:collapse; background:#fff; table-layout:auto; }}
+    .table-wrap {{ overflow:auto; max-height:72vh; border:1px solid var(--line); border-radius:8px; }}
+    table {{ min-width:1700px; width:max-content; border-collapse:collapse; background:#fff; table-layout:auto; }}
     th, td {{ border-bottom:1px solid var(--line); padding:10px; text-align:left; vertical-align:top; font-size:13px; overflow-wrap:normal; }}
     th {{ background:#eef2f7; color:#334155; position:sticky; top:0; }}
-    th:nth-child(14), th:nth-child(15), td:nth-child(14), td:nth-child(15) {{ width:900px; min-width:900px; }}
+    th:nth-child(10), th:nth-child(11), td:nth-child(10), td:nth-child(11) {{ width:520px; min-width:520px; }}
     .pill {{ display:inline-block; border-radius:999px; padding:4px 8px; color:#fff; font-size:12px; font-weight:700; }}
     .pill.ok {{ background:var(--ok); }}
     .pill.bad {{ background:var(--bad); }}
     .pill.warn {{ background:var(--warn); }}
-    .ua, .details {{ color:#3d4b5c; font-size:12px; }}
-    .body-preview pre {{ margin:0; max-height:560px; width:880px; overflow:auto; white-space:pre; font-family: Consolas, Monaco, monospace; font-size:12px; line-height:1.35; color:#2d3748; }}
+    .ua {{ color:#3d4b5c; font-size:12px; }}
+    details summary {{ cursor:pointer; font-weight:700; color:#0645ad; }}
+    .body-preview pre {{ margin:8px 0 0; max-height:360px; width:500px; overflow:auto; white-space:pre; font-family: Consolas, Monaco, monospace; font-size:12px; line-height:1.35; color:#2d3748; }}
   </style>
 </head>
 <body>
@@ -4142,11 +4148,28 @@ class ApiServerTestHandler(SoapDastHandler):
   </header>
   <main>
     <section class="metrics">{card_html}</section>
-    <section class="note"><strong>Audit scope:</strong> request and response bodies are shown in full for login evidence, including username/password test payloads, JWT access tokens, and refresh tokens.</section>
+    <section class="filter-box">
+      <form class="filters" method="GET" action="/login-audit">
+        <input type="hidden" name="limit" value="{esc(limit)}">
+        <label>Search all fields<input name="q" value="{esc(filters["q"])}" placeholder="token, login, user, route, body"></label>
+        <label>User<input name="user" value="{esc(filters["user"])}" placeholder="veracode"></label>
+        <label>Event<input name="event" value="{esc(filters["event"])}" placeholder="refresh"></label>
+        <label>Status<select name="status">
+          <option value="">Any</option>
+          <option value="success" {"selected" if filters["status"] == "success" else ""}>success</option>
+          <option value="failure" {"selected" if filters["status"] == "failure" else ""}>failure</option>
+          <option value="200" {"selected" if filters["status"] == "200" else ""}>HTTP 200</option>
+          <option value="401" {"selected" if filters["status"] == "401" else ""}>HTTP 401</option>
+        </select></label>
+        <label>Route<input name="path" value="{esc(filters["path"])}" placeholder="/soap/auth"></label>
+        <button type="submit">Filter</button>
+      </form>
+    </section>
     <div class="toolbar">
-      <span>Showing the latest {esc(summary["returned_events"])} of {esc(summary["total_events"])} matching events.</span>
-      <a href="/api/login-audit?limit={limit}">Technical JSON</a>
-      <a href="/login-audit?limit=250">Show 250</a>
+      <span>Showing {esc(len(events))} filtered events from the latest {esc(summary["returned_events"])} loaded events.</span>
+      <a href="/login-audit?limit={limit}">Clear filters</a>
+      <a href="/api/login-audit?limit={limit}{filter_query}">Technical JSON</a>
+      <a href="/login-audit?limit=250{filter_query}">Show 250</a>
       <a href="/report?limit={limit}">Full report</a>
     </div>
     <h2>Login Timeline</h2>
@@ -4154,7 +4177,7 @@ class ApiServerTestHandler(SoapDastHandler):
       <table>
         <thead>
           <tr>
-            <th>Result</th><th>Local time</th><th>Event</th><th>User</th><th>Role</th><th>HTTP</th><th>Route</th><th>Source IP</th><th>Destination</th><th>X-Forwarded-For</th><th>User-Agent</th><th>Error</th><th>Notes</th><th>Request Body</th><th>Response Body</th>
+            <th>Result</th><th>Local time</th><th>Event</th><th>User</th><th>HTTP</th><th>Route</th><th>Source IP</th><th>User-Agent</th><th>Error</th><th>Request Body</th><th>Response Body</th>
           </tr>
         </thead>
         <tbody>{rows_html}</tbody>

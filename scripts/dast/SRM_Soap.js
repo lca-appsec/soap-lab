@@ -4,7 +4,6 @@ var tokenExpiresAt = null;
 
 var defaultUsername = "veracode";
 var defaultPassword = "veracode";
-var defaultForwardedFor = "203.0.113.10";
 
 function run() {
     if (bearerToken === null || bearerToken === "" || tokenExpiresAt === null) {
@@ -63,7 +62,6 @@ function createLoginRequest(username, password) {
     var tokenRequest = httpClient.createRequest(getAuthUrl());
     tokenRequest.addHeader("Content-Type", "application/xml");
     tokenRequest.addHeader("SOAPAction", "Login");
-    tokenRequest.addHeader("X-Forwarded-For", getForwardedForHeader());
     tokenRequest.setMethod("POST");
     tokenRequest.setBody("<?xml version=\"1.0\"?>\r\n" +
         "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\">\r\n" +
@@ -81,7 +79,6 @@ function createRefreshTokenRequest(currentRefreshToken) {
     var tokenRequest = httpClient.createRequest(getRefreshUrl());
     tokenRequest.addHeader("Content-Type", "application/xml");
     tokenRequest.addHeader("SOAPAction", "RefreshToken");
-    tokenRequest.addHeader("X-Forwarded-For", getForwardedForHeader());
     if (bearerToken !== null && bearerToken !== "") {
         tokenRequest.addHeader("Authorization", "Bearer " + bearerToken);
     }
@@ -125,7 +122,6 @@ function isTokenExpired() {
 
 function updateRequestHeaders(token) {
     request.addHeader("Authorization", "Bearer " + token);
-    request.addHeader("X-Forwarded-For", getForwardedForHeader());
 }
 
 function getAuthUrl() {
@@ -178,10 +174,6 @@ function getVariableOrDefault(name, fallback) {
         return fallback;
     }
     return trimValue(String(value));
-}
-
-function getForwardedForHeader() {
-    return getVariableOrDefault("xForwardedFor", defaultForwardedFor);
 }
 
 function getXmlTagValue(xml, tagName) {

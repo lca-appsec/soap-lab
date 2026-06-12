@@ -80,18 +80,6 @@
     "/api/login": {
       "post": {
         "summary": "Login and receive JWT, refresh token, and session id",
-        "parameters": [
-          {
-            "name": "X-Forwarded-For",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "203.0.113.10",
-            "description": "Optional source IP evidence header captured by /login-audit."
-          }
-        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -161,18 +149,6 @@
     "/api/refresh": {
       "post": {
         "summary": "Issue a new dynamic JWT using a reusable reusable refresh token",
-        "parameters": [
-          {
-            "name": "X-Forwarded-For",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "203.0.113.10",
-            "description": "Optional source IP evidence header captured by /login-audit."
-          }
-        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -241,18 +217,6 @@
         "security": [
           {
             "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "X-Forwarded-For",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "203.0.113.10",
-            "description": "Optional source IP evidence header captured by /login-audit."
           }
         ],
         "requestBody": {
