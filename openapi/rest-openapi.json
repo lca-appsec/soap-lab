@@ -1,9 +1,9 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "SOAP and REST DAST Lab - REST JSON API",
+    "title": "SOAP and REST DAST Lab - Focused REST/Catalog Surface",
     "version": "1.0.0",
-    "description": "Intentionally testable REST JSON API for authorized DAST/fuzzing demonstrations."
+    "description": "Focused OpenAPI document containing only /api/products, /api/products/*, /api/ecommerce, /api/ecommerce/*, and /api/comments."
   },
   "servers": [
     {
@@ -11,40 +11,7 @@
     }
   ],
   "components": {
-    "securitySchemes": {
-      "bearerAuth": {
-        "type": "http",
-        "scheme": "bearer",
-        "bearerFormat": "JWT"
-      }
-    },
     "schemas": {
-      "LoginRequest": {
-        "type": "object",
-        "required": [
-          "username",
-          "password"
-        ],
-        "properties": {
-          "username": {
-            "type": "string"
-          },
-          "password": {
-            "type": "string"
-          }
-        }
-      },
-      "RefreshRequest": {
-        "type": "object",
-        "required": [
-          "refreshToken"
-        ],
-        "properties": {
-          "refreshToken": {
-            "type": "string"
-          }
-        }
-      },
       "Product": {
         "type": "object",
         "properties": {
@@ -62,429 +29,45 @@
           }
         }
       },
-      "RiskEchoRequest": {
+      "CatalogItem": {
         "type": "object",
         "properties": {
-          "input": {
-            "type": "string",
-            "example": "<script>alert(1)</script>"
-          },
-          "message": {
+          "name": {
             "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "value": {
+            "type": "number"
+          },
+          "stock": {
+            "type": "integer"
+          },
+          "promotion": {
+            "type": "string",
+            "enum": [
+              "yes",
+              "no"
+            ]
           }
         }
       }
     }
   },
   "paths": {
-    "/api/login": {
-      "post": {
-        "summary": "Login and receive JWT, refresh token, and session id",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LoginRequest"
-              },
-              "example": {
-                "username": "veracode",
-                "password": "veracode"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Tokens issued"
-          },
-          "401": {
-            "description": "Invalid credentials"
-          }
-        }
-      },
-      "x-accepted-verbs": [
-        "POST",
-        "HEAD",
-        "OPTIONS"
-      ],
-      "head": {
-        "summary": "HEAD metadata for /api/login",
-        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
-        "responses": {
-          "200": {
-            "description": "Headers only; Content-Type is application/json"
-          },
-          "404": {
-            "description": "Route not found"
-          }
-        }
-      },
-      "options": {
-        "summary": "OPTIONS verb discovery for /api/login",
-        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
-        "responses": {
-          "204": {
-            "description": "Allow header lists: POST, HEAD, OPTIONS",
-            "headers": {
-              "Allow": {
-                "description": "Methods accepted by this route",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "POST, HEAD, OPTIONS"
-              },
-              "Access-Control-Allow-Methods": {
-                "description": "CORS method discovery header",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "POST, HEAD, OPTIONS"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/refresh": {
-      "post": {
-        "summary": "Issue a new dynamic JWT using a reusable reusable refresh token",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RefreshRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "New JWT issued"
-          },
-          "401": {
-            "description": "Refresh failed"
-          }
-        }
-      },
-      "x-accepted-verbs": [
-        "POST",
-        "HEAD",
-        "OPTIONS"
-      ],
-      "head": {
-        "summary": "HEAD metadata for /api/refresh",
-        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
-        "responses": {
-          "200": {
-            "description": "Headers only; Content-Type is application/json"
-          },
-          "404": {
-            "description": "Route not found"
-          }
-        }
-      },
-      "options": {
-        "summary": "OPTIONS verb discovery for /api/refresh",
-        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
-        "responses": {
-          "204": {
-            "description": "Allow header lists: POST, HEAD, OPTIONS",
-            "headers": {
-              "Allow": {
-                "description": "Methods accepted by this route",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "POST, HEAD, OPTIONS"
-              },
-              "Access-Control-Allow-Methods": {
-                "description": "CORS method discovery header",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "POST, HEAD, OPTIONS"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/logout": {
-      "post": {
-        "summary": "Logout the current REST session and optionally deactivate the supplied refresh token",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": false,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RefreshRequest"
-              },
-              "example": {
-                "refreshToken": "YOUR_REFRESH_TOKEN"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Logged out"
-          },
-          "401": {
-            "description": "Token rejected"
-          }
-        }
-      },
-      "x-accepted-verbs": [
-        "POST",
-        "HEAD",
-        "OPTIONS"
-      ],
-      "head": {
-        "summary": "HEAD metadata for /api/logout",
-        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
-        "responses": {
-          "200": {
-            "description": "Headers only; Content-Type is application/json"
-          },
-          "404": {
-            "description": "Route not found"
-          }
-        }
-      },
-      "options": {
-        "summary": "OPTIONS verb discovery for /api/logout",
-        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
-        "responses": {
-          "204": {
-            "description": "Allow header lists: POST, HEAD, OPTIONS",
-            "headers": {
-              "Allow": {
-                "description": "Methods accepted by this route",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "POST, HEAD, OPTIONS"
-              },
-              "Access-Control-Allow-Methods": {
-                "description": "CORS method discovery header",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "POST, HEAD, OPTIONS"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/validate": {
-      "get": {
-        "summary": "Validate bearer token using intentionally weak JWT validation",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Token accepted"
-          },
-          "401": {
-            "description": "Token rejected"
-          }
-        }
-      },
-      "x-accepted-verbs": [
-        "GET",
-        "HEAD",
-        "OPTIONS"
-      ],
-      "head": {
-        "summary": "HEAD metadata for /api/validate",
-        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
-        "responses": {
-          "200": {
-            "description": "Headers only; Content-Type is application/json"
-          },
-          "404": {
-            "description": "Route not found"
-          }
-        }
-      },
-      "options": {
-        "summary": "OPTIONS verb discovery for /api/validate",
-        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
-        "responses": {
-          "204": {
-            "description": "Allow header lists: GET, HEAD, OPTIONS",
-            "headers": {
-              "Allow": {
-                "description": "Methods accepted by this route",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              },
-              "Access-Control-Allow-Methods": {
-                "description": "CORS method discovery header",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/admin": {
-      "get": {
-        "summary": "Admin authenticated account data",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Admin account data"
-          },
-          "403": {
-            "description": "Role forbidden"
-          }
-        }
-      },
-      "x-accepted-verbs": [
-        "GET",
-        "HEAD",
-        "OPTIONS"
-      ],
-      "head": {
-        "summary": "HEAD metadata for /api/admin",
-        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
-        "responses": {
-          "200": {
-            "description": "Headers only; Content-Type is application/json"
-          },
-          "404": {
-            "description": "Route not found"
-          }
-        }
-      },
-      "options": {
-        "summary": "OPTIONS verb discovery for /api/admin",
-        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
-        "responses": {
-          "204": {
-            "description": "Allow header lists: GET, HEAD, OPTIONS",
-            "headers": {
-              "Allow": {
-                "description": "Methods accepted by this route",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              },
-              "Access-Control-Allow-Methods": {
-                "description": "CORS method discovery header",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/user": {
-      "get": {
-        "summary": "User authenticated account data",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "User account data"
-          },
-          "403": {
-            "description": "Role forbidden"
-          }
-        }
-      },
-      "x-accepted-verbs": [
-        "GET",
-        "HEAD",
-        "OPTIONS"
-      ],
-      "head": {
-        "summary": "HEAD metadata for /api/user",
-        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
-        "responses": {
-          "200": {
-            "description": "Headers only; Content-Type is application/json"
-          },
-          "404": {
-            "description": "Route not found"
-          }
-        }
-      },
-      "options": {
-        "summary": "OPTIONS verb discovery for /api/user",
-        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
-        "responses": {
-          "204": {
-            "description": "Allow header lists: GET, HEAD, OPTIONS",
-            "headers": {
-              "Allow": {
-                "description": "Methods accepted by this route",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              },
-              "Access-Control-Allow-Methods": {
-                "description": "CORS method discovery header",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/products": {
       "get": {
-        "summary": "List products. Admin sees prices; user sees availability only",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "summary": "List products",
+        "description": "Primary product collection route for crawling and fuzzing.",
         "responses": {
           "200": {
-            "description": "Product list"
+            "description": "Product list response"
           }
         }
       },
       "post": {
-        "summary": "Admin create product. Use X-HTTP-Method-Override: PUSH as Azure-compatible edit fallback",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "summary": "Create product",
         "parameters": [
           {
             "name": "X-HTTP-Method-Override",
@@ -550,51 +133,6 @@
                     "price": 899.9,
                     "stock": 7
                   }
-                },
-                "update-sku-swg-001": {
-                  "summary": "Update price with X-HTTP-Method-Override: PUSH for SKU-SWG-001",
-                  "value": {
-                    "sku": "SKU-SWG-001",
-                    "name": "Aurora Smart TV 55",
-                    "price": 2299.9,
-                    "stock": 8
-                  }
-                },
-                "update-sku-swg-002": {
-                  "summary": "Update price with X-HTTP-Method-Override: PUSH for SKU-SWG-002",
-                  "value": {
-                    "sku": "SKU-SWG-002",
-                    "name": "Boreal Notebook Pro",
-                    "price": 4999.9,
-                    "stock": 5
-                  }
-                },
-                "update-sku-swg-003": {
-                  "summary": "Update price with X-HTTP-Method-Override: PUSH for SKU-SWG-003",
-                  "value": {
-                    "sku": "SKU-SWG-003",
-                    "name": "Cosmos Smartphone 5G",
-                    "price": 2899.9,
-                    "stock": 12
-                  }
-                },
-                "update-sku-swg-004": {
-                  "summary": "Update price with X-HTTP-Method-Override: PUSH for SKU-SWG-004",
-                  "value": {
-                    "sku": "SKU-SWG-004",
-                    "name": "Delta Wireless Headset",
-                    "price": 349.9,
-                    "stock": 20
-                  }
-                },
-                "update-sku-swg-005": {
-                  "summary": "Update price with X-HTTP-Method-Override: PUSH for SKU-SWG-005",
-                  "value": {
-                    "sku": "SKU-SWG-005",
-                    "name": "Equinox Gaming Router",
-                    "price": 799.9,
-                    "stock": 7
-                  }
                 }
               }
             }
@@ -607,12 +145,7 @@
         }
       },
       "delete": {
-        "summary": "Admin delete product by sku query parameter",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "summary": "Delete product by sku query parameter",
         "parameters": [
           {
             "name": "sku",
@@ -630,151 +163,7 @@
         }
       },
       "patch": {
-        "summary": "Admin partially update product with PATCH",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Product"
-              },
-              "examples": {
-                "sku-swg-001": {
-                  "summary": "Patch product price SKU-SWG-001",
-                  "value": {
-                    "sku": "SKU-SWG-001",
-                    "name": "Aurora Smart TV 55",
-                    "price": 2299.9,
-                    "stock": 8
-                  }
-                },
-                "sku-swg-002": {
-                  "summary": "Patch product price SKU-SWG-002",
-                  "value": {
-                    "sku": "SKU-SWG-002",
-                    "name": "Boreal Notebook Pro",
-                    "price": 4999.9,
-                    "stock": 5
-                  }
-                },
-                "sku-swg-003": {
-                  "summary": "Patch product price SKU-SWG-003",
-                  "value": {
-                    "sku": "SKU-SWG-003",
-                    "name": "Cosmos Smartphone 5G",
-                    "price": 2899.9,
-                    "stock": 12
-                  }
-                },
-                "sku-swg-004": {
-                  "summary": "Patch product price SKU-SWG-004",
-                  "value": {
-                    "sku": "SKU-SWG-004",
-                    "name": "Delta Wireless Headset",
-                    "price": 349.9,
-                    "stock": 20
-                  }
-                },
-                "sku-swg-005": {
-                  "summary": "Patch product price SKU-SWG-005",
-                  "value": {
-                    "sku": "SKU-SWG-005",
-                    "name": "Equinox Gaming Router",
-                    "price": 799.9,
-                    "stock": 7
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Product patched"
-          },
-          "403": {
-            "description": "Role forbidden"
-          }
-        }
-      },
-      "options": {
-        "summary": "OPTIONS verb discovery for /api/products",
-        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
-        "responses": {
-          "204": {
-            "description": "Allow header lists: GET, POST, PUSH, PATCH, UPDATE, DELETE, HEAD, OPTIONS",
-            "headers": {
-              "Allow": {
-                "description": "Methods accepted by this route",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, POST, PUSH, PATCH, UPDATE, DELETE, HEAD, OPTIONS"
-              },
-              "Access-Control-Allow-Methods": {
-                "description": "CORS method discovery header",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, POST, PUSH, PATCH, UPDATE, DELETE, HEAD, OPTIONS"
-              }
-            }
-          }
-        }
-      },
-      "x-update": {
-        "summary": "Custom HTTP UPDATE product edit",
-        "description": "This route accepts the non-standard HTTP verb UPDATE with the same JSON body used by PATCH.",
-        "requestBody": {
-          "example": {
-            "sku": "SKU-SWG-001",
-            "name": "Aurora Smart TV 55",
-            "price": 2299.9,
-            "stock": 8
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Product updated by custom UPDATE verb"
-          }
-        }
-      },
-      "x-accepted-verbs": [
-        "GET",
-        "POST",
-        "PUSH",
-        "PATCH",
-        "UPDATE",
-        "DELETE",
-        "HEAD",
-        "OPTIONS"
-      ],
-      "head": {
-        "summary": "HEAD metadata for /api/products",
-        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
-        "responses": {
-          "200": {
-            "description": "Headers only; Content-Type is application/json"
-          },
-          "404": {
-            "description": "Route not found"
-          }
-        }
-      }
-    },
-    "/api/products/push": {
-      "post": {
-        "summary": "Swagger-friendly alias for custom HTTP PUSH edit",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "summary": "Update product with PATCH",
         "requestBody": {
           "required": true,
           "content": {
@@ -834,17 +223,81 @@
         },
         "responses": {
           "200": {
-            "description": "Product edited"
+            "description": "Product patched"
+          }
+        }
+      },
+      "put": {
+        "summary": "Replace product with PUT",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Product"
+              },
+              "example": {
+                "sku": "SKU-SWG-001",
+                "name": "Aurora Smart TV 55",
+                "price": 2499.9,
+                "stock": 8
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Product replaced"
+          }
+        }
+      },
+      "x-update": {
+        "summary": "Custom HTTP UPDATE product edit",
+        "description": "This route accepts the non-standard HTTP verb UPDATE with the same body used by PATCH.",
+        "requestBody": {
+          "example": {
+            "sku": "SKU-SWG-001",
+            "name": "Aurora Smart TV 55",
+            "price": 2499.9,
+            "stock": 8
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Product updated by custom UPDATE verb"
+          }
+        }
+      },
+      "x-push": {
+        "summary": "Custom HTTP PUSH product edit",
+        "description": "This route accepts the non-standard HTTP verb PUSH with the same body used by PATCH.",
+        "requestBody": {
+          "example": {
+            "sku": "SKU-SWG-001",
+            "name": "Aurora Smart TV 55",
+            "price": 2499.9,
+            "stock": 8
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Product updated by custom PUSH verb"
           }
         }
       },
       "x-accepted-verbs": [
+        "GET",
         "POST",
+        "PUSH",
+        "PUT",
+        "PATCH",
+        "UPDATE",
+        "DELETE",
         "HEAD",
         "OPTIONS"
       ],
       "head": {
-        "summary": "HEAD metadata for /api/products/push",
+        "summary": "HEAD metadata for /api/products",
         "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
         "responses": {
           "200": {
@@ -856,35 +309,51 @@
         }
       },
       "options": {
-        "summary": "OPTIONS verb discovery for /api/products/push",
+        "summary": "OPTIONS verb discovery for /api/products",
         "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
         "responses": {
           "204": {
-            "description": "Allow header lists: POST, HEAD, OPTIONS",
+            "description": "Allow header lists: GET, POST, PUSH, PUT, PATCH, UPDATE, DELETE, HEAD, OPTIONS",
             "headers": {
               "Allow": {
                 "description": "Methods accepted by this route",
                 "schema": {
                   "type": "string"
                 },
-                "example": "POST, HEAD, OPTIONS"
+                "example": "GET, POST, PUSH, PUT, PATCH, UPDATE, DELETE, HEAD, OPTIONS"
               },
               "Access-Control-Allow-Methods": {
                 "description": "CORS method discovery header",
                 "schema": {
                   "type": "string"
                 },
-                "example": "POST, HEAD, OPTIONS"
+                "example": "GET, POST, PUSH, PUT, PATCH, UPDATE, DELETE, HEAD, OPTIONS"
               }
             }
           }
         }
       }
     },
-    "/api/products/eletronico": {
+    "/api/products/{category}": {
       "get": {
-        "summary": "Fuzzable electronics catalog with SQL injection parameters",
+        "summary": "Fuzzable product catalog category",
+        "description": "Wildcard-style replacement for /api/products/*. Existing categories include eletronico, smarphone, laptops, and books.",
         "parameters": [
+          {
+            "name": "category",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "eletronico",
+                "smarphone",
+                "laptops",
+                "books"
+              ]
+            },
+            "example": "eletronico"
+          },
           {
             "name": "q",
             "in": "query",
@@ -936,7 +405,10 @@
         ],
         "responses": {
           "200": {
-            "description": "Electronics product list"
+            "description": "Catalog product list"
+          },
+          "404": {
+            "description": "Category not found"
           }
         }
       },
@@ -946,7 +418,7 @@
         "OPTIONS"
       ],
       "head": {
-        "summary": "HEAD metadata for /api/products/eletronico",
+        "summary": "HEAD metadata for /api/products/{category}",
         "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
         "responses": {
           "200": {
@@ -958,7 +430,7 @@
         }
       },
       "options": {
-        "summary": "OPTIONS verb discovery for /api/products/eletronico",
+        "summary": "OPTIONS verb discovery for /api/products/{category}",
         "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
         "responses": {
           "204": {
@@ -983,316 +455,85 @@
         }
       }
     },
-    "/api/products/smarphone": {
+    "/api/ecommerce": {
       "get": {
-        "summary": "Fuzzable smarphone catalog with SQL injection parameters",
+        "summary": "List available e-commerce resources",
+        "description": "Entry point for crawling /api/ecommerce/*. Resources include categories, brands, deals, cart, orders, reviews, warranty, shipping, stores, and support.",
+        "responses": {
+          "200": {
+            "description": "E-commerce route index"
+          }
+        }
+      },
+      "x-accepted-verbs": [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "head": {
+        "summary": "HEAD metadata for /api/ecommerce",
+        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
+        "responses": {
+          "200": {
+            "description": "Headers only; Content-Type is application/json"
+          },
+          "404": {
+            "description": "Route not found"
+          }
+        }
+      },
+      "options": {
+        "summary": "OPTIONS verb discovery for /api/ecommerce",
+        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
+        "responses": {
+          "204": {
+            "description": "Allow header lists: GET, HEAD, OPTIONS",
+            "headers": {
+              "Allow": {
+                "description": "Methods accepted by this route",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "GET, HEAD, OPTIONS"
+              },
+              "Access-Control-Allow-Methods": {
+                "description": "CORS method discovery header",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "GET, HEAD, OPTIONS"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ecommerce/{resource}": {
+      "get": {
+        "summary": "Fuzzable e-commerce resource",
+        "description": "Wildcard-style replacement for /api/ecommerce/*.",
         "parameters": [
           {
-            "name": "q",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "camera' OR '1'='1"
-          },
-          {
-            "name": "id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "1 OR 1=1"
-          },
-          {
-            "name": "sort",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "name; DROP TABLE products"
-          },
-          {
-            "name": "promotion",
-            "in": "query",
-            "required": false,
+            "name": "resource",
+            "in": "path",
+            "required": true,
             "schema": {
               "type": "string",
               "enum": [
-                "yes",
-                "no"
+                "brands",
+                "cart",
+                "categories",
+                "deals",
+                "orders",
+                "reviews",
+                "shipping",
+                "stores",
+                "support",
+                "warranty"
               ]
-            }
-          },
-          {
-            "name": "min_value",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
             },
-            "example": "0 UNION SELECT username,password,1,1,1 FROM users"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Smarphone product list"
-          }
-        }
-      },
-      "x-accepted-verbs": [
-        "GET",
-        "HEAD",
-        "OPTIONS"
-      ],
-      "head": {
-        "summary": "HEAD metadata for /api/products/smarphone",
-        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
-        "responses": {
-          "200": {
-            "description": "Headers only; Content-Type is application/json"
+            "example": "categories"
           },
-          "404": {
-            "description": "Route not found"
-          }
-        }
-      },
-      "options": {
-        "summary": "OPTIONS verb discovery for /api/products/smarphone",
-        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
-        "responses": {
-          "204": {
-            "description": "Allow header lists: GET, HEAD, OPTIONS",
-            "headers": {
-              "Allow": {
-                "description": "Methods accepted by this route",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              },
-              "Access-Control-Allow-Methods": {
-                "description": "CORS method discovery header",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/products/laptops": {
-      "get": {
-        "summary": "Fuzzable laptop catalog with SQL injection parameters",
-        "parameters": [
-          {
-            "name": "q",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "camera' OR '1'='1"
-          },
-          {
-            "name": "id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "1 OR 1=1"
-          },
-          {
-            "name": "sort",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "name; DROP TABLE products"
-          },
-          {
-            "name": "promotion",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "enum": [
-                "yes",
-                "no"
-              ]
-            }
-          },
-          {
-            "name": "min_value",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "0 UNION SELECT username,password,1,1,1 FROM users"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Laptop product list"
-          }
-        }
-      },
-      "x-accepted-verbs": [
-        "GET",
-        "HEAD",
-        "OPTIONS"
-      ],
-      "head": {
-        "summary": "HEAD metadata for /api/products/laptops",
-        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
-        "responses": {
-          "200": {
-            "description": "Headers only; Content-Type is application/json"
-          },
-          "404": {
-            "description": "Route not found"
-          }
-        }
-      },
-      "options": {
-        "summary": "OPTIONS verb discovery for /api/products/laptops",
-        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
-        "responses": {
-          "204": {
-            "description": "Allow header lists: GET, HEAD, OPTIONS",
-            "headers": {
-              "Allow": {
-                "description": "Methods accepted by this route",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              },
-              "Access-Control-Allow-Methods": {
-                "description": "CORS method discovery header",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/products/books": {
-      "get": {
-        "summary": "Fuzzable books catalog with SQL injection parameters",
-        "parameters": [
-          {
-            "name": "q",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "camera' OR '1'='1"
-          },
-          {
-            "name": "id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "1 OR 1=1"
-          },
-          {
-            "name": "sort",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "name; DROP TABLE products"
-          },
-          {
-            "name": "promotion",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "enum": [
-                "yes",
-                "no"
-              ]
-            }
-          },
-          {
-            "name": "min_value",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "0 UNION SELECT username,password,1,1,1 FROM users"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Books product list"
-          }
-        }
-      },
-      "x-accepted-verbs": [
-        "GET",
-        "HEAD",
-        "OPTIONS"
-      ],
-      "head": {
-        "summary": "HEAD metadata for /api/products/books",
-        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
-        "responses": {
-          "200": {
-            "description": "Headers only; Content-Type is application/json"
-          },
-          "404": {
-            "description": "Route not found"
-          }
-        }
-      },
-      "options": {
-        "summary": "OPTIONS verb discovery for /api/products/books",
-        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
-        "responses": {
-          "204": {
-            "description": "Allow header lists: GET, HEAD, OPTIONS",
-            "headers": {
-              "Allow": {
-                "description": "Methods accepted by this route",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              },
-              "Access-Control-Allow-Methods": {
-                "description": "CORS method discovery header",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/ecommerce/categories": {
-      "get": {
-        "summary": "E-commerce electronics categories stored in SQLite",
-        "parameters": [
           {
             "name": "q",
             "in": "query",
@@ -1323,7 +564,10 @@
         ],
         "responses": {
           "200": {
-            "description": "Category list"
+            "description": "E-commerce records"
+          },
+          "404": {
+            "description": "Resource not found"
           }
         }
       },
@@ -1333,7 +577,7 @@
         "OPTIONS"
       ],
       "head": {
-        "summary": "HEAD metadata for /api/ecommerce/categories",
+        "summary": "HEAD metadata for /api/ecommerce/{resource}",
         "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
         "responses": {
           "200": {
@@ -1345,7 +589,7 @@
         }
       },
       "options": {
-        "summary": "OPTIONS verb discovery for /api/ecommerce/categories",
+        "summary": "OPTIONS verb discovery for /api/ecommerce/{resource}",
         "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
         "responses": {
           "204": {
@@ -1370,1013 +614,20 @@
         }
       }
     },
-    "/api/ecommerce/brands": {
+    "/api/comments": {
       "get": {
-        "summary": "E-commerce electronics brands stored in SQLite",
+        "summary": "Stored and reflected XSS comment form",
         "parameters": [
           {
-            "name": "q",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "orion' OR '1'='1"
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "active"
-          },
-          {
-            "name": "debug",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "true"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Brand list"
-          }
-        }
-      },
-      "x-accepted-verbs": [
-        "GET",
-        "HEAD",
-        "OPTIONS"
-      ],
-      "head": {
-        "summary": "HEAD metadata for /api/ecommerce/brands",
-        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
-        "responses": {
-          "200": {
-            "description": "Headers only; Content-Type is application/json"
-          },
-          "404": {
-            "description": "Route not found"
-          }
-        }
-      },
-      "options": {
-        "summary": "OPTIONS verb discovery for /api/ecommerce/brands",
-        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
-        "responses": {
-          "204": {
-            "description": "Allow header lists: GET, HEAD, OPTIONS",
-            "headers": {
-              "Allow": {
-                "description": "Methods accepted by this route",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              },
-              "Access-Control-Allow-Methods": {
-                "description": "CORS method discovery header",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/ecommerce/deals": {
-      "get": {
-        "summary": "E-commerce deals and bundles",
-        "parameters": [
-          {
-            "name": "q",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "orion' OR '1'='1"
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "active"
-          },
-          {
-            "name": "debug",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "true"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Deals list"
-          }
-        }
-      },
-      "x-accepted-verbs": [
-        "GET",
-        "HEAD",
-        "OPTIONS"
-      ],
-      "head": {
-        "summary": "HEAD metadata for /api/ecommerce/deals",
-        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
-        "responses": {
-          "200": {
-            "description": "Headers only; Content-Type is application/json"
-          },
-          "404": {
-            "description": "Route not found"
-          }
-        }
-      },
-      "options": {
-        "summary": "OPTIONS verb discovery for /api/ecommerce/deals",
-        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
-        "responses": {
-          "204": {
-            "description": "Allow header lists: GET, HEAD, OPTIONS",
-            "headers": {
-              "Allow": {
-                "description": "Methods accepted by this route",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              },
-              "Access-Control-Allow-Methods": {
-                "description": "CORS method discovery header",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/ecommerce/cart": {
-      "get": {
-        "summary": "E-commerce cart records",
-        "parameters": [
-          {
-            "name": "q",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "orion' OR '1'='1"
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "active"
-          },
-          {
-            "name": "debug",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "true"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Cart records"
-          }
-        }
-      },
-      "x-accepted-verbs": [
-        "GET",
-        "HEAD",
-        "OPTIONS"
-      ],
-      "head": {
-        "summary": "HEAD metadata for /api/ecommerce/cart",
-        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
-        "responses": {
-          "200": {
-            "description": "Headers only; Content-Type is application/json"
-          },
-          "404": {
-            "description": "Route not found"
-          }
-        }
-      },
-      "options": {
-        "summary": "OPTIONS verb discovery for /api/ecommerce/cart",
-        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
-        "responses": {
-          "204": {
-            "description": "Allow header lists: GET, HEAD, OPTIONS",
-            "headers": {
-              "Allow": {
-                "description": "Methods accepted by this route",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              },
-              "Access-Control-Allow-Methods": {
-                "description": "CORS method discovery header",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/ecommerce/orders": {
-      "get": {
-        "summary": "E-commerce order records",
-        "parameters": [
-          {
-            "name": "q",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "orion' OR '1'='1"
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "active"
-          },
-          {
-            "name": "debug",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "true"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Order records"
-          }
-        }
-      },
-      "x-accepted-verbs": [
-        "GET",
-        "HEAD",
-        "OPTIONS"
-      ],
-      "head": {
-        "summary": "HEAD metadata for /api/ecommerce/orders",
-        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
-        "responses": {
-          "200": {
-            "description": "Headers only; Content-Type is application/json"
-          },
-          "404": {
-            "description": "Route not found"
-          }
-        }
-      },
-      "options": {
-        "summary": "OPTIONS verb discovery for /api/ecommerce/orders",
-        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
-        "responses": {
-          "204": {
-            "description": "Allow header lists: GET, HEAD, OPTIONS",
-            "headers": {
-              "Allow": {
-                "description": "Methods accepted by this route",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              },
-              "Access-Control-Allow-Methods": {
-                "description": "CORS method discovery header",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/ecommerce/reviews": {
-      "get": {
-        "summary": "E-commerce product reviews",
-        "parameters": [
-          {
-            "name": "q",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "orion' OR '1'='1"
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "active"
-          },
-          {
-            "name": "debug",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "true"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Review records"
-          }
-        }
-      },
-      "x-accepted-verbs": [
-        "GET",
-        "HEAD",
-        "OPTIONS"
-      ],
-      "head": {
-        "summary": "HEAD metadata for /api/ecommerce/reviews",
-        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
-        "responses": {
-          "200": {
-            "description": "Headers only; Content-Type is application/json"
-          },
-          "404": {
-            "description": "Route not found"
-          }
-        }
-      },
-      "options": {
-        "summary": "OPTIONS verb discovery for /api/ecommerce/reviews",
-        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
-        "responses": {
-          "204": {
-            "description": "Allow header lists: GET, HEAD, OPTIONS",
-            "headers": {
-              "Allow": {
-                "description": "Methods accepted by this route",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              },
-              "Access-Control-Allow-Methods": {
-                "description": "CORS method discovery header",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/ecommerce/warranty": {
-      "get": {
-        "summary": "E-commerce warranty plans",
-        "parameters": [
-          {
-            "name": "q",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "orion' OR '1'='1"
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "active"
-          },
-          {
-            "name": "debug",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "true"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Warranty records"
-          }
-        }
-      },
-      "x-accepted-verbs": [
-        "GET",
-        "HEAD",
-        "OPTIONS"
-      ],
-      "head": {
-        "summary": "HEAD metadata for /api/ecommerce/warranty",
-        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
-        "responses": {
-          "200": {
-            "description": "Headers only; Content-Type is application/json"
-          },
-          "404": {
-            "description": "Route not found"
-          }
-        }
-      },
-      "options": {
-        "summary": "OPTIONS verb discovery for /api/ecommerce/warranty",
-        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
-        "responses": {
-          "204": {
-            "description": "Allow header lists: GET, HEAD, OPTIONS",
-            "headers": {
-              "Allow": {
-                "description": "Methods accepted by this route",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              },
-              "Access-Control-Allow-Methods": {
-                "description": "CORS method discovery header",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/ecommerce/shipping": {
-      "get": {
-        "summary": "E-commerce shipping options",
-        "parameters": [
-          {
-            "name": "q",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "orion' OR '1'='1"
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "active"
-          },
-          {
-            "name": "debug",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "true"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Shipping records"
-          }
-        }
-      },
-      "x-accepted-verbs": [
-        "GET",
-        "HEAD",
-        "OPTIONS"
-      ],
-      "head": {
-        "summary": "HEAD metadata for /api/ecommerce/shipping",
-        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
-        "responses": {
-          "200": {
-            "description": "Headers only; Content-Type is application/json"
-          },
-          "404": {
-            "description": "Route not found"
-          }
-        }
-      },
-      "options": {
-        "summary": "OPTIONS verb discovery for /api/ecommerce/shipping",
-        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
-        "responses": {
-          "204": {
-            "description": "Allow header lists: GET, HEAD, OPTIONS",
-            "headers": {
-              "Allow": {
-                "description": "Methods accepted by this route",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              },
-              "Access-Control-Allow-Methods": {
-                "description": "CORS method discovery header",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/ecommerce/stores": {
-      "get": {
-        "summary": "E-commerce store pickup locations",
-        "parameters": [
-          {
-            "name": "q",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "orion' OR '1'='1"
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "active"
-          },
-          {
-            "name": "debug",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "true"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Store records"
-          }
-        }
-      },
-      "x-accepted-verbs": [
-        "GET",
-        "HEAD",
-        "OPTIONS"
-      ],
-      "head": {
-        "summary": "HEAD metadata for /api/ecommerce/stores",
-        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
-        "responses": {
-          "200": {
-            "description": "Headers only; Content-Type is application/json"
-          },
-          "404": {
-            "description": "Route not found"
-          }
-        }
-      },
-      "options": {
-        "summary": "OPTIONS verb discovery for /api/ecommerce/stores",
-        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
-        "responses": {
-          "204": {
-            "description": "Allow header lists: GET, HEAD, OPTIONS",
-            "headers": {
-              "Allow": {
-                "description": "Methods accepted by this route",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              },
-              "Access-Control-Allow-Methods": {
-                "description": "CORS method discovery header",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/ecommerce/support": {
-      "get": {
-        "summary": "E-commerce support tickets",
-        "parameters": [
-          {
-            "name": "q",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "orion' OR '1'='1"
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "active"
-          },
-          {
-            "name": "debug",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "true"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Support records"
-          }
-        }
-      },
-      "x-accepted-verbs": [
-        "GET",
-        "HEAD",
-        "OPTIONS"
-      ],
-      "head": {
-        "summary": "HEAD metadata for /api/ecommerce/support",
-        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
-        "responses": {
-          "200": {
-            "description": "Headers only; Content-Type is application/json"
-          },
-          "404": {
-            "description": "Route not found"
-          }
-        }
-      },
-      "options": {
-        "summary": "OPTIONS verb discovery for /api/ecommerce/support",
-        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
-        "responses": {
-          "204": {
-            "description": "Allow header lists: GET, HEAD, OPTIONS",
-            "headers": {
-              "Allow": {
-                "description": "Methods accepted by this route",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              },
-              "Access-Control-Allow-Methods": {
-                "description": "CORS method discovery header",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/risk/search": {
-      "get": {
-        "summary": "SQL injection demonstration search route",
-        "parameters": [
-          {
-            "name": "term",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "' OR '1'='1"
-          },
-          {
-            "name": "tier",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "silver"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Customer rows and executed SQL"
-          },
-          "500": {
-            "description": "Database error evidence"
-          }
-        }
-      },
-      "options": {
-        "summary": "OPTIONS verb discovery for /api/risk/search",
-        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
-        "responses": {
-          "204": {
-            "description": "Allow header lists: GET, HEAD, OPTIONS",
-            "headers": {
-              "Allow": {
-                "description": "Methods accepted by this route",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              },
-              "Access-Control-Allow-Methods": {
-                "description": "CORS method discovery header",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              }
-            }
-          }
-        }
-      },
-      "x-accepted-verbs": [
-        "GET",
-        "HEAD",
-        "OPTIONS"
-      ],
-      "head": {
-        "summary": "HEAD metadata for /api/risk/search",
-        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
-        "responses": {
-          "200": {
-            "description": "Headers only; Content-Type is application/json"
-          },
-          "404": {
-            "description": "Route not found"
-          }
-        }
-      }
-    },
-    "/api/risk/echo": {
-      "get": {
-        "summary": "Reflected XSS demonstration route",
-        "parameters": [
-          {
-            "name": "input",
+            "name": "preview",
             "in": "query",
             "required": false,
             "schema": {
               "type": "string"
             },
             "example": "<script>alert(1)</script>"
-          },
-          {
-            "name": "format",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "enum": [
-                "html",
-                "json"
-              ]
-            },
-            "example": "html"
           }
         ],
-        "responses": {
-          "200": {
-            "description": "Reflected HTML or JSON"
-          }
-        }
-      },
-      "post": {
-        "summary": "Reflect JSON body input",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RiskEchoRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Reflected JSON response"
-          }
-        }
-      },
-      "patch": {
-        "summary": "Reflect JSON body input with PATCH",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RiskEchoRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Reflected JSON response"
-          }
-        }
-      },
-      "options": {
-        "summary": "OPTIONS verb discovery for /api/risk/echo",
-        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
-        "responses": {
-          "204": {
-            "description": "Allow header lists: GET, POST, PATCH, UPDATE, HEAD, OPTIONS",
-            "headers": {
-              "Allow": {
-                "description": "Methods accepted by this route",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, POST, PATCH, UPDATE, HEAD, OPTIONS"
-              },
-              "Access-Control-Allow-Methods": {
-                "description": "CORS method discovery header",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, POST, PATCH, UPDATE, HEAD, OPTIONS"
-              }
-            }
-          }
-        }
-      },
-      "x-update": {
-        "summary": "Custom HTTP UPDATE reflected-input route",
-        "description": "This route accepts UPDATE with the same JSON body used by POST/PATCH.",
-        "requestBody": {
-          "example": {
-            "input": "<script>alert(1)</script>"
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Reflected JSON response"
-          }
-        }
-      },
-      "x-accepted-verbs": [
-        "GET",
-        "POST",
-        "PATCH",
-        "UPDATE",
-        "HEAD",
-        "OPTIONS"
-      ],
-      "head": {
-        "summary": "HEAD metadata for /api/risk/echo",
-        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
-        "responses": {
-          "200": {
-            "description": "Headers only; Content-Type is application/json"
-          },
-          "404": {
-            "description": "Route not found"
-          }
-        }
-      }
-    },
-    "/api/risk/account": {
-      "get": {
-        "summary": "IDOR demonstration route for authenticated users",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "accountId",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "9001"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Account data for requested accountId"
-          },
-          "401": {
-            "description": "Missing token"
-          }
-        }
-      },
-      "options": {
-        "summary": "OPTIONS verb discovery for /api/risk/account",
-        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
-        "responses": {
-          "204": {
-            "description": "Allow header lists: GET, HEAD, OPTIONS",
-            "headers": {
-              "Allow": {
-                "description": "Methods accepted by this route",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              },
-              "Access-Control-Allow-Methods": {
-                "description": "CORS method discovery header",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              }
-            }
-          }
-        }
-      },
-      "x-accepted-verbs": [
-        "GET",
-        "HEAD",
-        "OPTIONS"
-      ],
-      "head": {
-        "summary": "HEAD metadata for /api/risk/account",
-        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
-        "responses": {
-          "200": {
-            "description": "Headers only; Content-Type is application/json"
-          },
-          "404": {
-            "description": "Route not found"
-          }
-        }
-      }
-    },
-    "/comments": {
-      "get": {
-        "summary": "Stored XSS comment form",
         "responses": {
           "200": {
             "description": "HTML comment form"
@@ -2393,10 +644,12 @@
                 "type": "object",
                 "properties": {
                   "name": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "security-tester"
                   },
                   "comment": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "<script>alert('xss-lab')</script>"
                   }
                 }
               }
@@ -2416,7 +669,7 @@
         "OPTIONS"
       ],
       "head": {
-        "summary": "HEAD metadata for /comments",
+        "summary": "HEAD metadata for /api/comments",
         "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
         "responses": {
           "200": {
@@ -2428,7 +681,7 @@
         }
       },
       "options": {
-        "summary": "OPTIONS verb discovery for /comments",
+        "summary": "OPTIONS verb discovery for /api/comments",
         "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
         "responses": {
           "204": {
@@ -2447,604 +700,6 @@
                   "type": "string"
                 },
                 "example": "GET, POST, HEAD, OPTIONS"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/audit": {
-      "get": {
-        "summary": "Read HTTP/auth audit events",
-        "responses": {
-          "200": {
-            "description": "Audit log"
-          }
-        }
-      },
-      "x-accepted-verbs": [
-        "GET",
-        "HEAD",
-        "OPTIONS"
-      ],
-      "head": {
-        "summary": "HEAD metadata for /api/audit",
-        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
-        "responses": {
-          "200": {
-            "description": "Headers only; Content-Type is application/json"
-          },
-          "404": {
-            "description": "Route not found"
-          }
-        }
-      },
-      "options": {
-        "summary": "OPTIONS verb discovery for /api/audit",
-        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
-        "responses": {
-          "204": {
-            "description": "Allow header lists: GET, HEAD, OPTIONS",
-            "headers": {
-              "Allow": {
-                "description": "Methods accepted by this route",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              },
-              "Access-Control-Allow-Methods": {
-                "description": "CORS method discovery header",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/login-tracking": {
-      "get": {
-        "summary": "Read authentication tracking evidence",
-        "responses": {
-          "200": {
-            "description": "Login and token tracking evidence"
-          }
-        }
-      },
-      "x-accepted-verbs": [
-        "GET",
-        "HEAD",
-        "OPTIONS"
-      ],
-      "head": {
-        "summary": "HEAD metadata for /api/login-tracking",
-        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
-        "responses": {
-          "200": {
-            "description": "Headers only; Content-Type is application/json"
-          },
-          "404": {
-            "description": "Route not found"
-          }
-        }
-      },
-      "options": {
-        "summary": "OPTIONS verb discovery for /api/login-tracking",
-        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
-        "responses": {
-          "204": {
-            "description": "Allow header lists: GET, HEAD, OPTIONS",
-            "headers": {
-              "Allow": {
-                "description": "Methods accepted by this route",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              },
-              "Access-Control-Allow-Methods": {
-                "description": "CORS method discovery header",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/login-audit": {
-      "get": {
-        "summary": "Read focused login, refresh, and logout audit evidence",
-        "parameters": [
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 500
-            },
-            "example": 100
-          },
-          {
-            "name": "q",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "refresh"
-          },
-          {
-            "name": "user",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "veracode"
-          },
-          {
-            "name": "event",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "refresh"
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "success"
-          },
-          {
-            "name": "path",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "/soap/refreshtoken"
-          },
-          {
-            "name": "date_from",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "format": "date"
-            },
-            "example": "2026-06-12"
-          },
-          {
-            "name": "date_to",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "format": "date"
-            },
-            "example": "2026-06-12"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Login audit evidence"
-          }
-        }
-      },
-      "x-accepted-verbs": [
-        "GET",
-        "HEAD",
-        "OPTIONS"
-      ],
-      "head": {
-        "summary": "HEAD metadata for /api/login-audit",
-        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
-        "responses": {
-          "200": {
-            "description": "Headers only; Content-Type is application/json"
-          },
-          "404": {
-            "description": "Route not found"
-          }
-        }
-      },
-      "options": {
-        "summary": "OPTIONS verb discovery for /api/login-audit",
-        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
-        "responses": {
-          "204": {
-            "description": "Allow header lists: GET, HEAD, OPTIONS",
-            "headers": {
-              "Allow": {
-                "description": "Methods accepted by this route",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              },
-              "Access-Control-Allow-Methods": {
-                "description": "CORS method discovery header",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/report": {
-      "get": {
-        "summary": "Executive HTML authentication report",
-        "responses": {
-          "200": {
-            "description": "Human-readable login tracking report"
-          }
-        }
-      },
-      "x-accepted-verbs": [
-        "GET",
-        "HEAD",
-        "OPTIONS"
-      ],
-      "head": {
-        "summary": "HEAD metadata for /report",
-        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
-        "responses": {
-          "200": {
-            "description": "Headers only; Content-Type is application/json"
-          },
-          "404": {
-            "description": "Route not found"
-          }
-        }
-      },
-      "options": {
-        "summary": "OPTIONS verb discovery for /report",
-        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
-        "responses": {
-          "204": {
-            "description": "Allow header lists: GET, HEAD, OPTIONS",
-            "headers": {
-              "Allow": {
-                "description": "Methods accepted by this route",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              },
-              "Access-Control-Allow-Methods": {
-                "description": "CORS method discovery header",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/login-audit": {
-      "get": {
-        "summary": "Executive HTML login audit report",
-        "parameters": [
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 500
-            },
-            "example": 100
-          },
-          {
-            "name": "q",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "refresh"
-          },
-          {
-            "name": "user",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "veracode"
-          },
-          {
-            "name": "event",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "refresh"
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "success"
-          },
-          {
-            "name": "path",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "/soap/refreshtoken"
-          },
-          {
-            "name": "date_from",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "format": "date"
-            },
-            "example": "2026-06-12"
-          },
-          {
-            "name": "date_to",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "format": "date"
-            },
-            "example": "2026-06-12"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Human-readable login, refresh, and logout report"
-          }
-        }
-      },
-      "x-accepted-verbs": [
-        "GET",
-        "HEAD",
-        "OPTIONS"
-      ],
-      "head": {
-        "summary": "HEAD metadata for /login-audit",
-        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
-        "responses": {
-          "200": {
-            "description": "Headers only; Content-Type is application/json"
-          },
-          "404": {
-            "description": "Route not found"
-          }
-        }
-      },
-      "options": {
-        "summary": "OPTIONS verb discovery for /login-audit",
-        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
-        "responses": {
-          "204": {
-            "description": "Allow header lists: GET, HEAD, OPTIONS",
-            "headers": {
-              "Allow": {
-                "description": "Methods accepted by this route",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              },
-              "Access-Control-Allow-Methods": {
-                "description": "CORS method discovery header",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/login/audit": {
-      "get": {
-        "summary": "Alias for executive HTML login audit report",
-        "parameters": [
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 500
-            },
-            "example": 100
-          },
-          {
-            "name": "q",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "refresh"
-          },
-          {
-            "name": "user",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "veracode"
-          },
-          {
-            "name": "event",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "refresh"
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "success"
-          },
-          {
-            "name": "path",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "example": "/soap/refreshtoken"
-          },
-          {
-            "name": "date_from",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "format": "date"
-            },
-            "example": "2026-06-12"
-          },
-          {
-            "name": "date_to",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "format": "date"
-            },
-            "example": "2026-06-12"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Human-readable login, refresh, and logout report"
-          }
-        }
-      },
-      "x-accepted-verbs": [
-        "GET",
-        "HEAD",
-        "OPTIONS"
-      ],
-      "head": {
-        "summary": "HEAD metadata for /login/audit",
-        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
-        "responses": {
-          "200": {
-            "description": "Headers only; Content-Type is application/json"
-          },
-          "404": {
-            "description": "Route not found"
-          }
-        }
-      },
-      "options": {
-        "summary": "OPTIONS verb discovery for /login/audit",
-        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
-        "responses": {
-          "204": {
-            "description": "Allow header lists: GET, HEAD, OPTIONS",
-            "headers": {
-              "Allow": {
-                "description": "Methods accepted by this route",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              },
-              "Access-Control-Allow-Methods": {
-                "description": "CORS method discovery header",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/health": {
-      "get": {
-        "summary": "Container health check",
-        "responses": {
-          "200": {
-            "description": "Application is running"
-          }
-        }
-      },
-      "x-accepted-verbs": [
-        "GET",
-        "HEAD",
-        "OPTIONS"
-      ],
-      "head": {
-        "summary": "HEAD metadata for /health",
-        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
-        "responses": {
-          "200": {
-            "description": "Headers only; Content-Type is application/json"
-          },
-          "404": {
-            "description": "Route not found"
-          }
-        }
-      },
-      "options": {
-        "summary": "OPTIONS verb discovery for /health",
-        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
-        "responses": {
-          "204": {
-            "description": "Allow header lists: GET, HEAD, OPTIONS",
-            "headers": {
-              "Allow": {
-                "description": "Methods accepted by this route",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
-              },
-              "Access-Control-Allow-Methods": {
-                "description": "CORS method discovery header",
-                "schema": {
-                  "type": "string"
-                },
-                "example": "GET, HEAD, OPTIONS"
               }
             }
           }

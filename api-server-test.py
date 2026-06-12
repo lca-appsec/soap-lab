@@ -529,6 +529,12 @@ def ecommerce_route_exists(route_type):
         return row is not None
 
 
+def ecommerce_route_types():
+    with db_connect() as conn:
+        rows = conn.execute("SELECT DISTINCT route_type FROM ecommerce_records ORDER BY route_type").fetchall()
+    return [row["route_type"] for row in rows]
+
+
 def risk_customer_rows_from_sql(sql):
     with db_connect() as conn:
         return [row_to_dict(row) for row in conn.execute(sql).fetchall()]
@@ -2574,6 +2580,8 @@ REST_ALLOWED_VERBS_BY_PATH = {
     "/api/user": "GET, HEAD, OPTIONS",
     "/api/products": "GET, POST, PUSH, PATCH, UPDATE, DELETE, HEAD, OPTIONS",
     "/api/products/push": "POST, HEAD, OPTIONS",
+    "/api/ecommerce": "GET, HEAD, OPTIONS",
+    "/api/comments": "GET, POST, HEAD, OPTIONS",
     "/api/risk/search": "GET, HEAD, OPTIONS",
     "/api/risk/echo": "GET, POST, PATCH, UPDATE, HEAD, OPTIONS",
     "/api/risk/account": "GET, HEAD, OPTIONS",
@@ -2593,6 +2601,7 @@ XML_ALLOWED_VERBS_BY_PATH = {
     "/admin": "GET, HEAD, OPTIONS",
     "/user": "GET, HEAD, OPTIONS",
     "/products": "GET, POST, PUSH, PUT, PATCH, UPDATE, DELETE, HEAD, OPTIONS",
+    "/ecommerce": "GET, HEAD, OPTIONS",
     "/comments": "GET, POST, HEAD, OPTIONS",
     "/audit": "GET, HEAD, OPTIONS",
     "/login-tracking": "GET, HEAD, OPTIONS",
@@ -2623,30 +2632,151 @@ def add_verb_discovery_to_openapi(spec, explicit_allow=None, default_content_typ
     return spec
 
 
-def rest_openapi_spec():
+def limited_catalog_openapi_spec(title, description, default_content_type="application/json", api_prefix=False):
+    is_xml = "xml" in default_content_type
+    product_body_schema = {"type": "string"} if is_xml else {"$ref": "#/components/schemas/Product"}
+    product_create_examples = (
+        named_product_xml_examples(SWAGGER_PRODUCT_CREATE_EXAMPLES, "Create product")
+        if is_xml
+        else named_product_examples(SWAGGER_PRODUCT_CREATE_EXAMPLES, "Create product")
+    )
+    product_update_examples = (
+        named_product_xml_examples(SWAGGER_PRODUCT_UPDATE_EXAMPLES, "Update product price")
+        if is_xml
+        else named_product_examples(SWAGGER_PRODUCT_UPDATE_EXAMPLES, "Update product price")
+    )
+    product_example = product_xml(SWAGGER_PRODUCT_CREATE_EXAMPLES[0]) if is_xml else SWAGGER_PRODUCT_CREATE_EXAMPLES[0]
+    comment_post_content = {
+        "application/x-www-form-urlencoded": {
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "example": "security-tester"},
+                    "comment": {"type": "string", "example": "<script>alert('xss-lab')</script>"},
+                },
+            }
+        }
+    }
+    prefix = "/api" if api_prefix else ""
+    product_path = f"{prefix}/products"
+    product_wildcard = f"{prefix}/products/{{category}}"
+    ecommerce_path = f"{prefix}/ecommerce"
+    ecommerce_wildcard = f"{prefix}/ecommerce/{{resource}}"
+    comments_route = f"{prefix}/comments"
+    limited_allowed_verbs = {
+        product_path: "GET, POST, PUSH, PUT, PATCH, UPDATE, DELETE, HEAD, OPTIONS",
+        product_wildcard: "GET, HEAD, OPTIONS",
+        ecommerce_path: "GET, HEAD, OPTIONS",
+        ecommerce_wildcard: "GET, HEAD, OPTIONS",
+        comments_route: "GET, POST, HEAD, OPTIONS",
+    }
+    product_collection_path = {
+        "get": {
+            "summary": "List products",
+            "description": "Primary product collection route for crawling and fuzzing.",
+            "responses": {"200": {"description": "Product list response"}},
+        },
+        "post": {
+            "summary": "Create product",
+            "parameters": [{"name": "X-HTTP-Method-Override", "in": "header", "required": False, "schema": {"type": "string", "enum": ["PUSH"]}}],
+            "requestBody": {
+                "required": True,
+                "content": {
+                    default_content_type: {
+                        "schema": product_body_schema,
+                        "examples": product_create_examples,
+                    }
+                },
+            },
+            "responses": {"201": {"description": "Product created"}},
+        },
+        "delete": {
+            "summary": "Delete product by sku query parameter",
+            "parameters": [{"name": "sku", "in": "query", "required": True, "schema": {"type": "string"}}],
+            "responses": {"200": {"description": "Product deleted"}},
+        },
+        "patch": {
+            "summary": "Update product with PATCH",
+            "requestBody": {
+                "required": True,
+                "content": {
+                    default_content_type: {
+                        "schema": product_body_schema,
+                        "examples": product_update_examples,
+                    }
+                },
+            },
+            "responses": {"200": {"description": "Product patched"}},
+        },
+        "put": {
+            "summary": "Replace product with PUT",
+            "requestBody": {"required": True, "content": {default_content_type: {"schema": product_body_schema, "example": product_example}}},
+            "responses": {"200": {"description": "Product replaced"}},
+        },
+        "x-update": {
+            "summary": "Custom HTTP UPDATE product edit",
+            "description": "This route accepts the non-standard HTTP verb UPDATE with the same body used by PATCH.",
+            "requestBody": {"example": product_example},
+            "responses": {"200": {"description": "Product updated by custom UPDATE verb"}},
+        },
+        "x-push": {
+            "summary": "Custom HTTP PUSH product edit",
+            "description": "This route accepts the non-standard HTTP verb PUSH with the same body used by PATCH.",
+            "requestBody": {"example": product_example},
+            "responses": {"200": {"description": "Product updated by custom PUSH verb"}},
+        },
+    }
+    product_wildcard_path = {
+        "get": {
+            "summary": "Fuzzable product catalog category",
+            "description": f"Wildcard-style replacement for {product_path}/*. Existing categories include eletronico, smarphone, laptops, and books.",
+            "parameters": [
+                {"name": "category", "in": "path", "required": True, "schema": {"type": "string", "enum": list(FUZZING_CATALOG.keys())}, "example": "eletronico"},
+                *catalog_query_parameters(),
+            ],
+            "responses": {"200": {"description": "Catalog product list"}, "404": {"description": "Category not found"}},
+        },
+    }
+    ecommerce_index_path = {
+        "get": {
+            "summary": "List available e-commerce resources",
+            "description": f"Entry point for crawling {ecommerce_path}/*. Resources include categories, brands, deals, cart, orders, reviews, warranty, shipping, stores, and support.",
+            "responses": {"200": {"description": "E-commerce route index"}},
+        },
+    }
+    ecommerce_wildcard_path = {
+        "get": {
+            "summary": "Fuzzable e-commerce resource",
+            "description": f"Wildcard-style replacement for {ecommerce_path}/*.",
+            "parameters": [
+                {"name": "resource", "in": "path", "required": True, "schema": {"type": "string", "enum": sorted({item["route_type"] for item in ECOMMERCE_RECORDS})}, "example": "categories"},
+                *ecommerce_query_parameters(),
+            ],
+            "responses": {"200": {"description": "E-commerce records"}, "404": {"description": "Resource not found"}},
+        },
+    }
+    comments_path = {
+        "get": {
+            "summary": "Stored and reflected XSS comment form",
+            "parameters": [{"name": "preview", "in": "query", "required": False, "schema": {"type": "string"}, "example": "<script>alert(1)</script>"}],
+            "responses": {"200": {"description": "HTML comment form"}},
+        },
+        "post": {
+            "summary": "Submit testable comment",
+            "requestBody": {"required": True, "content": comment_post_content},
+            "responses": {"200": {"description": "HTML page reflecting stored comment without escaping"}},
+        },
+    }
     spec = {
         "openapi": "3.0.3",
         "info": {
-            "title": "SOAP and REST DAST Lab - REST JSON API",
+            "title": title,
             "version": "1.0.0",
-            "description": "Intentionally testable REST JSON API for authorized DAST/fuzzing demonstrations.",
+            "description": description,
         },
         "servers": [{"url": public_base_url()}],
         "components": {
-            "securitySchemes": {
-                "bearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}
-            },
             "schemas": {
-                "LoginRequest": {
-                    "type": "object",
-                    "required": ["username", "password"],
-                    "properties": {"username": {"type": "string"}, "password": {"type": "string"}},
-                },
-                "RefreshRequest": {
-                    "type": "object",
-                    "required": ["refreshToken"],
-                    "properties": {"refreshToken": {"type": "string"}},
-                },
                 "Product": {
                     "type": "object",
                     "properties": {
@@ -2656,420 +2786,45 @@ def rest_openapi_spec():
                         "stock": {"type": "integer"},
                     },
                 },
-                "RiskEchoRequest": {
+                "CatalogItem": {
                     "type": "object",
                     "properties": {
-                        "input": {"type": "string", "example": "<script>alert(1)</script>"},
-                        "message": {"type": "string"},
+                        "name": {"type": "string"},
+                        "description": {"type": "string"},
+                        "value": {"type": "number"},
+                        "stock": {"type": "integer"},
+                        "promotion": {"type": "string", "enum": ["yes", "no"]},
                     },
                 },
             },
         },
         "paths": {
-            "/api/login": {
-                "post": {
-                    "summary": "Login and receive JWT, refresh token, and session id",
-                    "requestBody": {
-                        "required": True,
-                        "content": {
-                            "application/json": {
-                                "schema": {"$ref": "#/components/schemas/LoginRequest"},
-                                "example": {"username": "veracode", "password": "veracode"},
-                            }
-                        },
-                    },
-                    "responses": {"200": {"description": "Tokens issued"}, "401": {"description": "Invalid credentials"}},
-                }
-            },
-            "/api/refresh": {
-                "post": {
-                    "summary": "Issue a new dynamic JWT using a reusable reusable refresh token",
-                    "requestBody": {
-                        "required": True,
-                        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RefreshRequest"}}},
-                    },
-                    "responses": {"200": {"description": "New JWT issued"}, "401": {"description": "Refresh failed"}},
-                }
-            },
-            "/api/logout": {
-                "post": {
-                    "summary": "Logout the current REST session and optionally deactivate the supplied refresh token",
-                    "security": [{"bearerAuth": []}],
-                    "requestBody": {
-                        "required": False,
-                        "content": {
-                            "application/json": {
-                                "schema": {"$ref": "#/components/schemas/RefreshRequest"},
-                                "example": {"refreshToken": "YOUR_REFRESH_TOKEN"},
-                            }
-                        },
-                    },
-                    "responses": {"200": {"description": "Logged out"}, "401": {"description": "Token rejected"}},
-                }
-            },
-            "/api/validate": {
-                "get": {
-                    "summary": "Validate bearer token using intentionally weak JWT validation",
-                    "security": [{"bearerAuth": []}],
-                    "responses": {"200": {"description": "Token accepted"}, "401": {"description": "Token rejected"}},
-                }
-            },
-            "/api/admin": {
-                "get": {
-                    "summary": "Admin authenticated account data",
-                    "security": [{"bearerAuth": []}],
-                    "responses": {"200": {"description": "Admin account data"}, "403": {"description": "Role forbidden"}},
-                }
-            },
-            "/api/user": {
-                "get": {
-                    "summary": "User authenticated account data",
-                    "security": [{"bearerAuth": []}],
-                    "responses": {"200": {"description": "User account data"}, "403": {"description": "Role forbidden"}},
-                }
-            },
-            "/api/products": {
-                "get": {
-                    "summary": "List products. Admin sees prices; user sees availability only",
-                    "security": [{"bearerAuth": []}],
-                    "responses": {"200": {"description": "Product list"}},
-                },
-                "post": {
-                    "summary": "Admin create product. Use X-HTTP-Method-Override: PUSH as Azure-compatible edit fallback",
-                    "security": [{"bearerAuth": []}],
-                    "parameters": [{"name": "X-HTTP-Method-Override", "in": "header", "required": False, "schema": {"type": "string", "enum": ["PUSH"]}}],
-                    "requestBody": {
-                        "required": True,
-                        "content": {
-                            "application/json": {
-                                "schema": {"$ref": "#/components/schemas/Product"},
-                                "examples": {
-                                    **named_product_examples(SWAGGER_PRODUCT_CREATE_EXAMPLES, "Create product"),
-                                    **{
-                                        f"update-{key}": value
-                                        for key, value in named_product_examples(
-                                            SWAGGER_PRODUCT_UPDATE_EXAMPLES,
-                                            "Update price with X-HTTP-Method-Override: PUSH for",
-                                        ).items()
-                                    },
-                                },
-                            }
-                        },
-                    },
-                    "responses": {"201": {"description": "Product created"}},
-                },
-                "delete": {
-                    "summary": "Admin delete product by sku query parameter",
-                    "security": [{"bearerAuth": []}],
-                    "parameters": [{"name": "sku", "in": "query", "required": True, "schema": {"type": "string"}}],
-                    "responses": {"200": {"description": "Product deleted"}},
-                },
-                "patch": {
-                    "summary": "Admin partially update product with PATCH",
-                    "security": [{"bearerAuth": []}],
-                    "requestBody": {
-                        "required": True,
-                        "content": {
-                            "application/json": {
-                                "schema": {"$ref": "#/components/schemas/Product"},
-                                "examples": named_product_examples(SWAGGER_PRODUCT_UPDATE_EXAMPLES, "Patch product price"),
-                            }
-                        },
-                    },
-                    "responses": {"200": {"description": "Product patched"}, "403": {"description": "Role forbidden"}},
-                },
-                "options": {
-                    "summary": "Discover allowed product verbs",
-                    "responses": {"204": {"description": "Allow header lists GET, POST, PUSH, PATCH, UPDATE, DELETE, OPTIONS"}},
-                },
-                "x-update": {
-                    "summary": "Custom HTTP UPDATE product edit",
-                    "description": "This route accepts the non-standard HTTP verb UPDATE with the same JSON body used by PATCH.",
-                    "requestBody": {"example": SWAGGER_PRODUCT_UPDATE_EXAMPLES[0]},
-                    "responses": {"200": {"description": "Product updated by custom UPDATE verb"}},
-                },
-            },
-            "/api/products/push": {
-                "post": {
-                    "summary": "Swagger-friendly alias for custom HTTP PUSH edit",
-                    "security": [{"bearerAuth": []}],
-                    "requestBody": {
-                        "required": True,
-                        "content": {
-                            "application/json": {
-                                "schema": {"$ref": "#/components/schemas/Product"},
-                                "examples": named_product_examples(SWAGGER_PRODUCT_UPDATE_EXAMPLES, "Update product price"),
-                            }
-                        },
-                    },
-                    "responses": {"200": {"description": "Product edited"}},
-                }
-            },
-            "/api/products/eletronico": {"get": {"summary": "Fuzzable electronics catalog with SQL injection parameters", "parameters": catalog_query_parameters(), "responses": {"200": {"description": "Electronics product list"}}}},
-            "/api/products/smarphone": {"get": {"summary": "Fuzzable smarphone catalog with SQL injection parameters", "parameters": catalog_query_parameters(), "responses": {"200": {"description": "Smarphone product list"}}}},
-            "/api/products/laptops": {"get": {"summary": "Fuzzable laptop catalog with SQL injection parameters", "parameters": catalog_query_parameters(), "responses": {"200": {"description": "Laptop product list"}}}},
-            "/api/products/books": {"get": {"summary": "Fuzzable books catalog with SQL injection parameters", "parameters": catalog_query_parameters(), "responses": {"200": {"description": "Books product list"}}}},
-            "/api/ecommerce/categories": {"get": {"summary": "E-commerce electronics categories stored in SQLite", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "Category list"}}}},
-            "/api/ecommerce/brands": {"get": {"summary": "E-commerce electronics brands stored in SQLite", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "Brand list"}}}},
-            "/api/ecommerce/deals": {"get": {"summary": "E-commerce deals and bundles", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "Deals list"}}}},
-            "/api/ecommerce/cart": {"get": {"summary": "E-commerce cart records", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "Cart records"}}}},
-            "/api/ecommerce/orders": {"get": {"summary": "E-commerce order records", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "Order records"}}}},
-            "/api/ecommerce/reviews": {"get": {"summary": "E-commerce product reviews", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "Review records"}}}},
-            "/api/ecommerce/warranty": {"get": {"summary": "E-commerce warranty plans", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "Warranty records"}}}},
-            "/api/ecommerce/shipping": {"get": {"summary": "E-commerce shipping options", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "Shipping records"}}}},
-            "/api/ecommerce/stores": {"get": {"summary": "E-commerce store pickup locations", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "Store records"}}}},
-            "/api/ecommerce/support": {"get": {"summary": "E-commerce support tickets", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "Support records"}}}},
-            "/api/risk/search": {
-                "get": {
-                    "summary": "SQL injection demonstration search route",
-                    "parameters": [
-                        {"name": "term", "in": "query", "required": False, "schema": {"type": "string"}, "example": "' OR '1'='1"},
-                        {"name": "tier", "in": "query", "required": False, "schema": {"type": "string"}, "example": "silver"},
-                    ],
-                    "responses": {"200": {"description": "Customer rows and executed SQL"}, "500": {"description": "Database error evidence"}},
-                },
-                "options": {"summary": "Discover allowed search verbs", "responses": {"204": {"description": "Allow header lists GET, OPTIONS"}}},
-            },
-            "/api/risk/echo": {
-                "get": {
-                    "summary": "Reflected XSS demonstration route",
-                    "parameters": [
-                        {"name": "input", "in": "query", "required": False, "schema": {"type": "string"}, "example": "<script>alert(1)</script>"},
-                        {"name": "format", "in": "query", "required": False, "schema": {"type": "string", "enum": ["html", "json"]}, "example": "html"},
-                    ],
-                    "responses": {"200": {"description": "Reflected HTML or JSON"}},
-                },
-                "post": {
-                    "summary": "Reflect JSON body input",
-                    "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RiskEchoRequest"}}}},
-                    "responses": {"200": {"description": "Reflected JSON response"}},
-                },
-                "patch": {
-                    "summary": "Reflect JSON body input with PATCH",
-                    "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RiskEchoRequest"}}}},
-                    "responses": {"200": {"description": "Reflected JSON response"}},
-                },
-                "options": {"summary": "Discover allowed echo verbs", "responses": {"204": {"description": "Allow header lists GET, POST, PATCH, UPDATE, OPTIONS"}}},
-                "x-update": {
-                    "summary": "Custom HTTP UPDATE reflected-input route",
-                    "description": "This route accepts UPDATE with the same JSON body used by POST/PATCH.",
-                    "requestBody": {"example": {"input": "<script>alert(1)</script>"}},
-                    "responses": {"200": {"description": "Reflected JSON response"}},
-                },
-            },
-            "/api/risk/account": {
-                "get": {
-                    "summary": "IDOR demonstration route for authenticated users",
-                    "security": [{"bearerAuth": []}],
-                    "parameters": [{"name": "accountId", "in": "query", "required": False, "schema": {"type": "string"}, "example": "9001"}],
-                    "responses": {"200": {"description": "Account data for requested accountId"}, "401": {"description": "Missing token"}},
-                },
-                "options": {"summary": "Discover allowed account verbs", "responses": {"204": {"description": "Allow header lists GET, OPTIONS"}}},
-            },
-            "/comments": {
-                "get": {"summary": "Stored XSS comment form", "responses": {"200": {"description": "HTML comment form"}}},
-                "post": {
-                    "summary": "Submit testable comment",
-                    "requestBody": {"required": True, "content": {"application/x-www-form-urlencoded": {"schema": {"type": "object", "properties": {"name": {"type": "string"}, "comment": {"type": "string"}}}}}},
-                    "responses": {"200": {"description": "HTML page reflecting stored comment without escaping"}},
-                },
-            },
-            "/api/audit": {"get": {"summary": "Read HTTP/auth audit events", "responses": {"200": {"description": "Audit log"}}}},
-            "/api/login-tracking": {"get": {"summary": "Read authentication tracking evidence", "responses": {"200": {"description": "Login and token tracking evidence"}}}},
-            "/api/login-audit": {"get": {"summary": "Read focused login, refresh, and logout audit evidence", "parameters": login_audit_query_parameters(), "responses": {"200": {"description": "Login audit evidence"}}}},
-            "/report": {"get": {"summary": "Executive HTML authentication report", "responses": {"200": {"description": "Human-readable login tracking report"}}}},
-            "/login-audit": {"get": {"summary": "Executive HTML login audit report", "parameters": login_audit_query_parameters(), "responses": {"200": {"description": "Human-readable login, refresh, and logout report"}}}},
-            "/login/audit": {"get": {"summary": "Alias for executive HTML login audit report", "parameters": login_audit_query_parameters(), "responses": {"200": {"description": "Human-readable login, refresh, and logout report"}}}},
-            "/health": {"get": {"summary": "Container health check", "responses": {"200": {"description": "Application is running"}}}},
+            product_path: product_collection_path,
+            product_wildcard: product_wildcard_path,
+            ecommerce_path: ecommerce_index_path,
+            ecommerce_wildcard: ecommerce_wildcard_path,
+            comments_route: comments_path,
         },
     }
-    return add_verb_discovery_to_openapi(spec, REST_ALLOWED_VERBS_BY_PATH)
+    return add_verb_discovery_to_openapi(spec, limited_allowed_verbs, default_content_type=default_content_type)
+
+
+def rest_openapi_spec():
+    return limited_catalog_openapi_spec(
+        "SOAP and REST DAST Lab - Focused REST/Catalog Surface",
+        "Focused OpenAPI document containing only /api/products, /api/products/*, /api/ecommerce, /api/ecommerce/*, and /api/comments.",
+        "application/json",
+        api_prefix=True,
+    )
 
 
 def xml_openapi_spec():
-    spec = {
-        "openapi": "3.0.3",
-        "info": {
-            "title": "SOAP and REST DAST Lab - XML/SOAP API",
-            "version": "1.0.0",
-            "description": "Swagger-style documentation for the XML/SOAP attack lab. SOAPAction selects the operation.",
-        },
-        "servers": [{"url": public_base_url()}],
-        "components": {
-            "securitySchemes": {
-                "bearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}
-            }
-        },
-        "paths": {
-            "/soap?wsdl": {"get": {"summary": "Download WSDL", "responses": {"200": {"description": "WSDL XML"}}}},
-            "/soap": {
-                "post": {
-                    "summary": "SOAP endpoint for business and risk demonstration operations",
-                    "description": "Do not use this endpoint for authentication. Use POST /soap/auth with SOAPAction Login or ValidateToken. Use POST /soap/refreshtoken with SOAPAction RefreshToken.",
-                    "parameters": [
-                        {
-                            "name": "SOAPAction",
-                            "in": "header",
-                            "required": True,
-                            "schema": {
-                                "type": "string",
-                                "enum": [
-                                    "GetAccount",
-                                    "TransferFunds",
-                                    "SearchUser",
-                                    "RiskSearch",
-                                    "RiskEcho",
-                                    "RiskAccount",
-                                    "Logout",
-                                ],
-                            },
-                        },
-                    ],
-                    "requestBody": {
-                        "required": True,
-                        "content": {
-                            "text/xml": {
-                                "schema": {"type": "string"},
-                                "examples": {
-                                    "get_account": {
-                                        "summary": "Get account",
-                                        "value": "<?xml version=\"1.0\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\"><soap:Body><lab:GetAccount><lab:AccountId>9001</lab:AccountId></lab:GetAccount></soap:Body></soap:Envelope>",
-                                    },
-                                    "risk_search_sqli": {
-                                        "summary": "RiskSearch SQL injection probe",
-                                        "value": "<?xml version=\"1.0\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\"><soap:Body><lab:RiskSearch><lab:Term>' OR '1'='1</lab:Term></lab:RiskSearch></soap:Body></soap:Envelope>",
-                                    },
-                                    "risk_echo_xss": {
-                                        "summary": "RiskEcho reflected input probe",
-                                        "value": "<?xml version=\"1.0\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\"><soap:Body><lab:RiskEcho><lab:Input>&lt;script&gt;alert(1)&lt;/script&gt;</lab:Input></lab:RiskEcho></soap:Body></soap:Envelope>",
-                                    },
-                                    "risk_account_idor": {
-                                        "summary": "RiskAccount IDOR probe",
-                                        "value": "<?xml version=\"1.0\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\"><soap:Body><lab:RiskAccount><lab:AccountId>9001</lab:AccountId></lab:RiskAccount></soap:Body></soap:Envelope>",
-                                    },
-                                },
-                            },
-                            "application/xml": {"schema": {"type": "string"}},
-                        },
-                    },
-                    "responses": {"200": {"description": "SOAP XML response"}, "401": {"description": "SOAP auth fault"}},
-                }
-            },
-            "/soap/auth": {
-                "post": {
-                    "summary": "Dedicated SOAP authentication endpoint for Login and ValidateToken",
-                    "description": "Use this endpoint with SOAPAction Login to obtain AccessToken/RefreshToken and SOAPAction ValidateToken to validate the current access token. Use /soap/refreshtoken for refresh token reauthentication. All auth interactions are written to the audit log.",
-                    "parameters": [
-                        {
-                            "name": "SOAPAction",
-                            "in": "header",
-                            "required": True,
-                            "schema": {"type": "string", "enum": ["Login", "ValidateToken"]},
-                        },
-                    ],
-                    "requestBody": {
-                        "required": True,
-                        "content": {
-                            "text/xml": {
-                                "schema": {"type": "string"},
-                                "example": "<?xml version=\"1.0\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\"><soap:Body><lab:Login><lab:Username>veracode</lab:Username><lab:Password>veracode</lab:Password></lab:Login></soap:Body></soap:Envelope>",
-                            },
-                            "application/xml": {"schema": {"type": "string"}},
-                        },
-                    },
-                    "responses": {"200": {"description": "SOAP auth XML response"}, "400": {"description": "Unsupported auth action"}, "401": {"description": "SOAP auth fault"}},
-                }
-            },
-            "/soap/refreshtoken": {
-                "post": {
-                    "summary": "Dedicated SOAP refresh token endpoint",
-                    "description": "Use this endpoint with SOAPAction RefreshToken to exchange a refresh token for a new dynamic access token. Refresh token interactions are written to the audit log and /login-tracking.",
-                    "parameters": [
-                        {
-                            "name": "SOAPAction",
-                            "in": "header",
-                            "required": True,
-                            "schema": {"type": "string", "enum": ["RefreshToken"]},
-                        },
-                    ],
-                    "requestBody": {
-                        "required": True,
-                        "content": {
-                            "text/xml": {
-                                "schema": {"type": "string"},
-                                "example": "<?xml version=\"1.0\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\"><soap:Body><lab:RefreshToken>YOUR_REFRESH_TOKEN</lab:RefreshToken></soap:Body></soap:Envelope>",
-                            },
-                            "application/xml": {"schema": {"type": "string"}},
-                        },
-                    },
-                    "responses": {"200": {"description": "SOAP refresh XML response"}, "400": {"description": "Unsupported refresh action"}, "401": {"description": "SOAP auth fault"}},
-                }
-            },
-            "/admin": {
-                "get": {"summary": "XML admin authenticated account data", "security": [{"bearerAuth": []}], "responses": {"200": {"description": "XML response"}, "403": {"description": "Role forbidden"}}}
-            },
-            "/user": {
-                "get": {"summary": "XML user authenticated account data", "security": [{"bearerAuth": []}], "responses": {"200": {"description": "XML response"}, "403": {"description": "Role forbidden"}}}
-            },
-            "/products": {
-                "get": {"summary": "XML product list. Admin sees prices; user sees availability only", "security": [{"bearerAuth": []}], "responses": {"200": {"description": "XML response"}}},
-                "post": {
-                    "summary": "XML admin create product. Use X-HTTP-Method-Override: PUSH as Azure-compatible edit fallback",
-                    "security": [{"bearerAuth": []}],
-                    "parameters": [{"name": "X-HTTP-Method-Override", "in": "header", "required": False, "schema": {"type": "string", "enum": ["PUSH"]}}],
-                    "requestBody": {
-                        "required": True,
-                        "content": {
-                            "application/xml": {
-                                "schema": {"type": "string"},
-                                "examples": {
-                                    **named_product_xml_examples(SWAGGER_PRODUCT_CREATE_EXAMPLES, "Create product"),
-                                    **{
-                                        f"update-{key}": value
-                                        for key, value in named_product_xml_examples(
-                                            SWAGGER_PRODUCT_UPDATE_EXAMPLES,
-                                            "Update price with X-HTTP-Method-Override: PUSH for",
-                                        ).items()
-                                    },
-                                },
-                            },
-                            "text/xml": {
-                                "schema": {"type": "string"},
-                                "examples": named_product_xml_examples(SWAGGER_PRODUCT_CREATE_EXAMPLES, "Create product"),
-                            },
-                        },
-                    },
-                    "responses": {"201": {"description": "XML response"}, "200": {"description": "XML edit response when override is PUSH"}, "403": {"description": "Role forbidden"}},
-                },
-                "delete": {"summary": "XML admin delete product", "security": [{"bearerAuth": []}], "responses": {"200": {"description": "XML response"}, "403": {"description": "Role forbidden"}}},
-            },
-            "/products/eletronico": {"get": {"summary": "XML electronics catalog with SQL injection parameters", "parameters": catalog_query_parameters(), "responses": {"200": {"description": "XML catalog response"}}}},
-            "/products/smarphone": {"get": {"summary": "XML smarphone catalog with SQL injection parameters", "parameters": catalog_query_parameters(), "responses": {"200": {"description": "XML catalog response"}}}},
-            "/products/laptops": {"get": {"summary": "XML laptop catalog with SQL injection parameters", "parameters": catalog_query_parameters(), "responses": {"200": {"description": "XML catalog response"}}}},
-            "/products/books": {"get": {"summary": "XML books catalog with SQL injection parameters", "parameters": catalog_query_parameters(), "responses": {"200": {"description": "XML catalog response"}}}},
-            "/ecommerce/categories": {"get": {"summary": "XML e-commerce electronics categories stored in SQLite", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "XML category records"}}}},
-            "/ecommerce/brands": {"get": {"summary": "XML e-commerce electronics brands stored in SQLite", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "XML brand records"}}}},
-            "/ecommerce/deals": {"get": {"summary": "XML e-commerce deals and bundles", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "XML deal records"}}}},
-            "/ecommerce/cart": {"get": {"summary": "XML e-commerce cart records", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "XML cart records"}}}},
-            "/ecommerce/orders": {"get": {"summary": "XML e-commerce order records", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "XML order records"}}}},
-            "/ecommerce/reviews": {"get": {"summary": "XML e-commerce product reviews", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "XML review records"}}}},
-            "/ecommerce/warranty": {"get": {"summary": "XML e-commerce warranty plans", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "XML warranty records"}}}},
-            "/ecommerce/shipping": {"get": {"summary": "XML e-commerce shipping options", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "XML shipping records"}}}},
-            "/ecommerce/stores": {"get": {"summary": "XML e-commerce store pickup locations", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "XML store records"}}}},
-            "/ecommerce/support": {"get": {"summary": "XML e-commerce support tickets", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "XML support records"}}}},
-            "/comments": {
-                "get": {"summary": "Stored/reflected XSS comment form", "responses": {"200": {"description": "HTML form"}}},
-                "post": {"summary": "Submit testable comment", "responses": {"200": {"description": "HTML response with unescaped stored comment"}}},
-            },
-            "/audit": {"get": {"summary": "XML audit log", "responses": {"200": {"description": "XML audit events"}}}},
-            "/login-tracking": {"get": {"summary": "XML authentication tracking evidence", "responses": {"200": {"description": "Login and token tracking evidence"}}}},
-            "/login-audit": {"get": {"summary": "HTML login, refresh, and logout audit report", "parameters": login_audit_query_parameters(), "responses": {"200": {"description": "Human-readable login audit report"}}}},
-            "/login/audit": {"get": {"summary": "Alias for HTML login, refresh, and logout audit report", "parameters": login_audit_query_parameters(), "responses": {"200": {"description": "Human-readable login audit report"}}}},
-            "/report": {"get": {"summary": "Executive HTML authentication report", "responses": {"200": {"description": "Human-readable login tracking report"}}}},
-            "/health": {"get": {"summary": "Container health check", "responses": {"200": {"description": "Application is running"}}}},
-        },
-    }
-    return add_verb_discovery_to_openapi(spec, XML_ALLOWED_VERBS_BY_PATH, default_content_type="application/xml")
+    return limited_catalog_openapi_spec(
+        "SOAP and REST DAST Lab - Focused XML/Catalog Surface",
+        "Focused OpenAPI document containing only /products, /products/*, /ecommerce, /ecommerce/*, and /comments.",
+        "application/xml",
+        api_prefix=False,
+    )
 
 
 class ApiServerTestHandler(SoapDastHandler):
@@ -3152,6 +2907,8 @@ class ApiServerTestHandler(SoapDastHandler):
             "/api/admin",
             "/api/user",
             "/api/products",
+            "/api/ecommerce",
+            "/api/comments",
             "/api/products/push",
             "/api/logout",
             "/api/login",
@@ -3172,11 +2929,12 @@ class ApiServerTestHandler(SoapDastHandler):
             "/admin",
             "/user",
             "/products",
+            "/ecommerce",
             "/soap",
             "/soap/auth",
             "/soap/refreshtoken",
         } or is_dynamic_catalog:
-            content_type = "text/html" if parsed.path in {"/comments", "/report", "/login-audit", "/login/audit"} else "application/json"
+            content_type = "text/html" if parsed.path in {"/comments", "/api/comments", "/report", "/login-audit", "/login/audit"} else "application/json"
             if parsed.path in {"/audit", "/login-tracking", "/admin", "/user", "/products", "/soap", "/soap/auth", "/soap/refreshtoken"} or parsed.path.startswith(("/products/", "/ecommerce/")):
                 content_type = "application/xml"
             self.send_head_only(200, content_type=content_type)
@@ -3296,6 +3054,9 @@ class ApiServerTestHandler(SoapDastHandler):
         if category:
             self.rest_fuzzing_catalog(category, parsed)
             return
+        if parsed.path == "/api/ecommerce":
+            self.rest_ecommerce_index()
+            return
         route_type = category_slug_from_path(parsed.path, "/api/ecommerce/")
         if route_type:
             self.rest_ecommerce_records(route_type, parsed)
@@ -3313,11 +3074,14 @@ class ApiServerTestHandler(SoapDastHandler):
         if category:
             self.xml_fuzzing_catalog(category, parsed)
             return
+        if parsed.path == "/ecommerce":
+            self.xml_ecommerce_index()
+            return
         route_type = category_slug_from_path(parsed.path, "/ecommerce/")
         if route_type:
             self.xml_ecommerce_records(route_type, parsed)
             return
-        if parsed.path == "/comments":
+        if parsed.path in {"/comments", "/api/comments"}:
             self.render_comments_form(parsed)
             return
         if parsed.path == "/report":
@@ -3411,7 +3175,7 @@ class ApiServerTestHandler(SoapDastHandler):
         if parsed.path == "/api/risk/echo":
             self.rest_risk_echo_post()
             return
-        if parsed.path == "/comments":
+        if parsed.path in {"/comments", "/api/comments"}:
             self.submit_comment()
             return
         if parsed.path not in {"/soap", "/soap/auth", "/soap/refreshtoken"}:
@@ -3931,6 +3695,18 @@ class ApiServerTestHandler(SoapDastHandler):
             },
         )
 
+    def rest_ecommerce_index(self):
+        resources = ecommerce_route_types()
+        self.send_json_api(
+            200,
+            {
+                "path": "/api/ecommerce",
+                "resources": resources,
+                "links": [f"/api/ecommerce/{resource}" for resource in resources],
+                "scannerHint": "Use /api/ecommerce/{resource}?q=orion or status=active for deeper crawling.",
+            },
+        )
+
     def rest_risk_search(self, parsed):
         query = parse_qs(parsed.query, keep_blank_values=True)
         term = query.get("term", query.get("q", [""]))[0]
@@ -4059,6 +3835,21 @@ class ApiServerTestHandler(SoapDastHandler):
                     "count": len(records),
                     "records": records,
                     "query": {key: values[0] if values else "" for key, values in query.items()},
+                },
+            ),
+        )
+
+    def xml_ecommerce_index(self):
+        resources = ecommerce_route_types()
+        self.send_body(
+            200,
+            xml_document(
+                "response",
+                {
+                    "path": "/ecommerce",
+                    "resources": resources,
+                    "links": [f"/ecommerce/{resource}" for resource in resources],
+                    "scannerHint": "Use /ecommerce/{resource}?q=orion or status=active for deeper crawling.",
                 },
             ),
         )
