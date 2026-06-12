@@ -7,7 +7,7 @@
   },
   "servers": [
     {
-      "url": "http://127.0.0.1:8089"
+      "url": "https://ca-rest-soap-labs.wonderfulcoast-2578bc9b.eastus.azurecontainerapps.io:8089"
     }
   ],
   "components": {
@@ -32,7 +32,7 @@
     },
     "/soap": {
       "post": {
-        "summary": "SOAP endpoint for protected business operations: GetAccount, TransferFunds, SearchUser, Logout",
+        "summary": "SOAP endpoint for business and risk demonstration operations",
         "description": "Do not use this endpoint for authentication. Use POST /soap/auth with SOAPAction Login or ValidateToken. Use POST /soap/refreshtoken with SOAPAction RefreshToken.",
         "parameters": [
           {
@@ -45,6 +45,9 @@
                 "GetAccount",
                 "TransferFunds",
                 "SearchUser",
+                "RiskSearch",
+                "RiskEcho",
+                "RiskAccount",
                 "Logout"
               ]
             }
@@ -67,7 +70,24 @@
               "schema": {
                 "type": "string"
               },
-              "example": "<?xml version=\"1.0\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\"><soap:Body><lab:GetAccount><lab:AccountId>9001</lab:AccountId></lab:GetAccount></soap:Body></soap:Envelope>"
+              "examples": {
+                "get_account": {
+                  "summary": "Get account",
+                  "value": "<?xml version=\"1.0\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\"><soap:Body><lab:GetAccount><lab:AccountId>9001</lab:AccountId></lab:GetAccount></soap:Body></soap:Envelope>"
+                },
+                "risk_search_sqli": {
+                  "summary": "RiskSearch SQL injection probe",
+                  "value": "<?xml version=\"1.0\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\"><soap:Body><lab:RiskSearch><lab:Term>' OR '1'='1</lab:Term></lab:RiskSearch></soap:Body></soap:Envelope>"
+                },
+                "risk_echo_xss": {
+                  "summary": "RiskEcho reflected input probe",
+                  "value": "<?xml version=\"1.0\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\"><soap:Body><lab:RiskEcho><lab:Input>&lt;script&gt;alert(1)&lt;/script&gt;</lab:Input></lab:RiskEcho></soap:Body></soap:Envelope>"
+                },
+                "risk_account_idor": {
+                  "summary": "RiskAccount IDOR probe",
+                  "value": "<?xml version=\"1.0\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\"><soap:Body><lab:RiskAccount><lab:AccountId>9001</lab:AccountId></lab:RiskAccount></soap:Body></soap:Envelope>"
+                }
+              }
             },
             "application/xml": {
               "schema": {

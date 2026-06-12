@@ -176,6 +176,14 @@ ECOMMERCE_RECORDS = [
     {"route_type": "support", "slug": "ticket-power-001", "title": "Ticket Nobreak", "description": "Chamado de suporte sobre autonomia de nobreak", "value": 0, "stock": 1, "status": "waiting_customer", "metadata": "severity=medium"},
 ]
 
+RISK_CUSTOMERS = [
+    {"account_id": "1001", "username": "user_apollo", "full_name": "Apollo Santos", "email": "apollo@example.test", "tier": "silver", "balance": 1280.50, "secret_note": "demo-pin-1001"},
+    {"account_id": "1002", "username": "user_bianca", "full_name": "Bianca Lima", "email": "bianca@example.test", "tier": "gold", "balance": 940.25, "secret_note": "demo-pin-1002"},
+    {"account_id": "1003", "username": "user_cairo", "full_name": "Cairo Rocha", "email": "cairo@example.test", "tier": "bronze", "balance": 2100.00, "secret_note": "demo-pin-1003"},
+    {"account_id": "9001", "username": "admin_aurora", "full_name": "Aurora Admin", "email": "aurora@example.test", "tier": "admin", "balance": 99250.00, "secret_note": "admin-note-9001"},
+    {"account_id": "9005", "username": "admin_equinox", "full_name": "Equinox Admin", "email": "equinox@example.test", "tier": "admin", "balance": 59100.10, "secret_note": "admin-note-9005"},
+]
+
 REFRESH_TOKENS = {}
 SESSIONS = {}
 AUDIT_LOG = []
@@ -305,6 +313,20 @@ def init_database():
             )
             conn.execute(
                 """
+                CREATE TABLE IF NOT EXISTS risk_customers (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_id TEXT NOT NULL,
+                    username TEXT NOT NULL,
+                    full_name TEXT NOT NULL,
+                    email TEXT NOT NULL,
+                    tier TEXT NOT NULL,
+                    balance REAL NOT NULL,
+                    secret_note TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS audit_events (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     created_at INTEGER NOT NULL,
@@ -379,6 +401,25 @@ def seed_database(conn):
                     item["metadata"],
                 )
                 for item in ECOMMERCE_RECORDS
+            ],
+        )
+    if conn.execute("SELECT COUNT(*) FROM risk_customers").fetchone()[0] == 0:
+        conn.executemany(
+            """
+            INSERT INTO risk_customers (account_id, username, full_name, email, tier, balance, secret_note)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    item["account_id"],
+                    item["username"],
+                    item["full_name"],
+                    item["email"],
+                    item["tier"],
+                    item["balance"],
+                    item["secret_note"],
+                )
+                for item in RISK_CUSTOMERS
             ],
         )
 
@@ -460,6 +501,35 @@ def ecommerce_route_exists(route_type):
     with db_connect() as conn:
         row = conn.execute("SELECT 1 FROM ecommerce_records WHERE route_type = ? LIMIT 1", (route_type,)).fetchone()
         return row is not None
+
+
+def risk_customer_rows_from_sql(sql):
+    with db_connect() as conn:
+        return [row_to_dict(row) for row in conn.execute(sql).fetchall()]
+
+
+def weak_customer_search(term, tier=""):
+    sql = (
+        "SELECT account_id, username, full_name, email, tier, balance, secret_note "
+        f"FROM risk_customers WHERE username LIKE '%{term}%' "
+        f"OR full_name LIKE '%{term}%' "
+        f"OR email LIKE '%{term}%'"
+    )
+    if tier:
+        sql += f" AND tier = '{tier}'"
+    sql += " ORDER BY username"
+    if "sleep" in term.lower() or "benchmark" in term.lower() or "waitfor" in term.lower():
+        time.sleep(2)
+    return risk_customer_rows_from_sql(sql), sql
+
+
+def weak_customer_by_account(account_id):
+    sql = (
+        "SELECT account_id, username, full_name, email, tier, balance, secret_note "
+        f"FROM risk_customers WHERE account_id = '{account_id}'"
+    )
+    rows = risk_customer_rows_from_sql(sql)
+    return (rows[0] if rows else None), sql
 
 
 def save_session(session_id, username, created_at, expires_at):
@@ -1086,6 +1156,9 @@ WSDL = f"""<?xml version="1.0" encoding="UTF-8"?>
     <operation name="GetAccount"><soap:operation soapAction="GetAccount"/></operation>
     <operation name="TransferFunds"><soap:operation soapAction="TransferFunds"/></operation>
     <operation name="SearchUser"><soap:operation soapAction="SearchUser"/></operation>
+    <operation name="RiskSearch"><soap:operation soapAction="RiskSearch"/></operation>
+    <operation name="RiskEcho"><soap:operation soapAction="RiskEcho"/></operation>
+    <operation name="RiskAccount"><soap:operation soapAction="RiskAccount"/></operation>
     <operation name="Logout"><soap:operation soapAction="Logout"/></operation>
   </binding>
   <portType name="SecurityTestPortType"/>
@@ -1304,7 +1377,7 @@ class SoapDastHandler(BaseHTTPRequestHandler):
                     "soap_refresh_token_endpoint": "/soap/refreshtoken",
                     "required_method": "POST",
                     "required_headers": ["Content-Type: text/xml", "SOAPAction: <operation>"],
-                    "business_operations": ["GetAccount", "TransferFunds", "SearchUser", "Logout"],
+                    "business_operations": ["GetAccount", "TransferFunds", "SearchUser", "RiskSearch", "RiskEcho", "RiskAccount", "Logout"],
                     "auth_operations": {
                         "/soap/auth": ["Login", "ValidateToken"],
                         "/soap/refreshtoken": ["RefreshToken"],
@@ -1738,6 +1811,9 @@ class SoapDastHandler(BaseHTTPRequestHandler):
             "GetAccount": self.soap_get_account,
             "TransferFunds": self.soap_transfer_funds,
             "SearchUser": self.soap_search_user,
+            "RiskSearch": self.soap_risk_search,
+            "RiskEcho": self.soap_risk_echo,
+            "RiskAccount": self.soap_risk_account,
             "Logout": self.soap_logout,
         }
         handler = handlers.get(action)
@@ -1756,6 +1832,9 @@ class SoapDastHandler(BaseHTTPRequestHandler):
                 "GetAccount",
                 "TransferFunds",
                 "SearchUser",
+                "RiskSearch",
+                "RiskEcho",
+                "RiskAccount",
                 "Logout",
             }:
                 return local
@@ -2281,6 +2360,13 @@ def rest_openapi_spec():
                         "stock": {"type": "integer"},
                     },
                 },
+                "RiskEchoRequest": {
+                    "type": "object",
+                    "properties": {
+                        "input": {"type": "string", "example": "<script>alert(1)</script>"},
+                        "message": {"type": "string"},
+                    },
+                },
             },
         },
         "paths": {
@@ -2380,6 +2466,30 @@ def rest_openapi_spec():
                     "parameters": [{"name": "sku", "in": "query", "required": True, "schema": {"type": "string"}}],
                     "responses": {"200": {"description": "Product deleted"}},
                 },
+                "patch": {
+                    "summary": "Admin partially update product with PATCH",
+                    "security": [{"bearerAuth": []}],
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/Product"},
+                                "examples": named_product_examples(SWAGGER_PRODUCT_UPDATE_EXAMPLES, "Patch product price"),
+                            }
+                        },
+                    },
+                    "responses": {"200": {"description": "Product patched"}, "403": {"description": "Role forbidden"}},
+                },
+                "options": {
+                    "summary": "Discover allowed product verbs",
+                    "responses": {"204": {"description": "Allow header lists GET, POST, PUSH, PATCH, UPDATE, DELETE, OPTIONS"}},
+                },
+                "x-update": {
+                    "summary": "Custom HTTP UPDATE product edit",
+                    "description": "This route accepts the non-standard HTTP verb UPDATE with the same JSON body used by PATCH.",
+                    "requestBody": {"example": SWAGGER_PRODUCT_UPDATE_EXAMPLES[0]},
+                    "responses": {"200": {"description": "Product updated by custom UPDATE verb"}},
+                },
             },
             "/api/products/push": {
                 "post": {
@@ -2411,6 +2521,53 @@ def rest_openapi_spec():
             "/api/ecommerce/shipping": {"get": {"summary": "E-commerce shipping options", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "Shipping records"}}}},
             "/api/ecommerce/stores": {"get": {"summary": "E-commerce store pickup locations", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "Store records"}}}},
             "/api/ecommerce/support": {"get": {"summary": "E-commerce support tickets", "parameters": ecommerce_query_parameters(), "responses": {"200": {"description": "Support records"}}}},
+            "/api/risk/search": {
+                "get": {
+                    "summary": "SQL injection demonstration search route",
+                    "parameters": [
+                        {"name": "term", "in": "query", "required": False, "schema": {"type": "string"}, "example": "' OR '1'='1"},
+                        {"name": "tier", "in": "query", "required": False, "schema": {"type": "string"}, "example": "silver"},
+                    ],
+                    "responses": {"200": {"description": "Customer rows and executed SQL"}, "500": {"description": "Database error evidence"}},
+                },
+                "options": {"summary": "Discover allowed search verbs", "responses": {"204": {"description": "Allow header lists GET, OPTIONS"}}},
+            },
+            "/api/risk/echo": {
+                "get": {
+                    "summary": "Reflected XSS demonstration route",
+                    "parameters": [
+                        {"name": "input", "in": "query", "required": False, "schema": {"type": "string"}, "example": "<script>alert(1)</script>"},
+                        {"name": "format", "in": "query", "required": False, "schema": {"type": "string", "enum": ["html", "json"]}, "example": "html"},
+                    ],
+                    "responses": {"200": {"description": "Reflected HTML or JSON"}},
+                },
+                "post": {
+                    "summary": "Reflect JSON body input",
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RiskEchoRequest"}}}},
+                    "responses": {"200": {"description": "Reflected JSON response"}},
+                },
+                "patch": {
+                    "summary": "Reflect JSON body input with PATCH",
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RiskEchoRequest"}}}},
+                    "responses": {"200": {"description": "Reflected JSON response"}},
+                },
+                "options": {"summary": "Discover allowed echo verbs", "responses": {"204": {"description": "Allow header lists GET, POST, PATCH, UPDATE, OPTIONS"}}},
+                "x-update": {
+                    "summary": "Custom HTTP UPDATE reflected-input route",
+                    "description": "This route accepts UPDATE with the same JSON body used by POST/PATCH.",
+                    "requestBody": {"example": {"input": "<script>alert(1)</script>"}},
+                    "responses": {"200": {"description": "Reflected JSON response"}},
+                },
+            },
+            "/api/risk/account": {
+                "get": {
+                    "summary": "IDOR demonstration route for authenticated users",
+                    "security": [{"bearerAuth": []}],
+                    "parameters": [{"name": "accountId", "in": "query", "required": False, "schema": {"type": "string"}, "example": "9001"}],
+                    "responses": {"200": {"description": "Account data for requested accountId"}, "401": {"description": "Missing token"}},
+                },
+                "options": {"summary": "Discover allowed account verbs", "responses": {"204": {"description": "Allow header lists GET, OPTIONS"}}},
+            },
             "/comments": {
                 "get": {"summary": "Stored XSS comment form", "responses": {"200": {"description": "HTML comment form"}}},
                 "post": {
@@ -2447,7 +2604,7 @@ def xml_openapi_spec():
             "/soap?wsdl": {"get": {"summary": "Download WSDL", "responses": {"200": {"description": "WSDL XML"}}}},
             "/soap": {
                 "post": {
-                    "summary": "SOAP endpoint for protected business operations: GetAccount, TransferFunds, SearchUser, Logout",
+                    "summary": "SOAP endpoint for business and risk demonstration operations",
                     "description": "Do not use this endpoint for authentication. Use POST /soap/auth with SOAPAction Login or ValidateToken. Use POST /soap/refreshtoken with SOAPAction RefreshToken.",
                     "parameters": [
                         {
@@ -2460,6 +2617,9 @@ def xml_openapi_spec():
                                     "GetAccount",
                                     "TransferFunds",
                                     "SearchUser",
+                                    "RiskSearch",
+                                    "RiskEcho",
+                                    "RiskAccount",
                                     "Logout",
                                 ],
                             },
@@ -2471,7 +2631,24 @@ def xml_openapi_spec():
                         "content": {
                             "text/xml": {
                                 "schema": {"type": "string"},
-                                "example": "<?xml version=\"1.0\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\"><soap:Body><lab:GetAccount><lab:AccountId>9001</lab:AccountId></lab:GetAccount></soap:Body></soap:Envelope>",
+                                "examples": {
+                                    "get_account": {
+                                        "summary": "Get account",
+                                        "value": "<?xml version=\"1.0\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\"><soap:Body><lab:GetAccount><lab:AccountId>9001</lab:AccountId></lab:GetAccount></soap:Body></soap:Envelope>",
+                                    },
+                                    "risk_search_sqli": {
+                                        "summary": "RiskSearch SQL injection probe",
+                                        "value": "<?xml version=\"1.0\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\"><soap:Body><lab:RiskSearch><lab:Term>' OR '1'='1</lab:Term></lab:RiskSearch></soap:Body></soap:Envelope>",
+                                    },
+                                    "risk_echo_xss": {
+                                        "summary": "RiskEcho reflected input probe",
+                                        "value": "<?xml version=\"1.0\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\"><soap:Body><lab:RiskEcho><lab:Input>&lt;script&gt;alert(1)&lt;/script&gt;</lab:Input></lab:RiskEcho></soap:Body></soap:Envelope>",
+                                    },
+                                    "risk_account_idor": {
+                                        "summary": "RiskAccount IDOR probe",
+                                        "value": "<?xml version=\"1.0\"?><soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:lab=\"urn:soap-dast-lab\"><soap:Body><lab:RiskAccount><lab:AccountId>9001</lab:AccountId></lab:RiskAccount></soap:Body></soap:Envelope>",
+                                    },
+                                },
                             },
                             "application/xml": {"schema": {"type": "string"}},
                         },
@@ -2673,6 +2850,9 @@ class ApiServerTestHandler(SoapDastHandler):
             "/api/audit",
             "/api/login-tracking",
             "/api/login-audit",
+            "/api/risk/search",
+            "/api/risk/echo",
+            "/api/risk/account",
             "/comments",
             "/report",
             "/login-audit",
@@ -2750,6 +2930,12 @@ class ApiServerTestHandler(SoapDastHandler):
                         "/api/ecommerce/stores",
                         "/api/ecommerce/support",
                     ],
+                    "risk_routes": [
+                        "/api/risk/search?term=apollo",
+                        "/api/risk/search?term=%27%20OR%20%271%27%3D%271",
+                        "/api/risk/echo?input=<script>alert(1)</script>",
+                        "/api/risk/account?accountId=9001",
+                    ],
                     "xss_comments": "/comments",
                     "audit": "/api/audit",
                     "login_tracking": "/api/login-tracking",
@@ -2799,6 +2985,15 @@ class ApiServerTestHandler(SoapDastHandler):
         if route_type:
             self.rest_ecommerce_records(route_type, parsed)
             return
+        if parsed.path == "/api/risk/search":
+            self.rest_risk_search(parsed)
+            return
+        if parsed.path == "/api/risk/echo":
+            self.rest_risk_echo(parsed)
+            return
+        if parsed.path == "/api/risk/account":
+            self.rest_risk_account(parsed)
+            return
         category = category_slug_from_path(parsed.path, "/products/")
         if category:
             self.xml_fuzzing_catalog(category, parsed)
@@ -2846,6 +3041,11 @@ class ApiServerTestHandler(SoapDastHandler):
                         "/ecommerce/stores",
                         "/ecommerce/support",
                     ],
+                    "risk_links": [
+                        "/api/risk/search?term=apollo",
+                        "/api/risk/search?term=%27%20OR%20%271%27%3D%271",
+                        "/api/risk/echo?input=<script>alert(1)</script>",
+                    ],
                     "xss_comments": "/comments",
                     "verbs": "/verbs",
                     "audit": "/audit",
@@ -2891,6 +3091,9 @@ class ApiServerTestHandler(SoapDastHandler):
             return
         if parsed.path == "/api/products/push":
             self.rest_admin_product_edit()
+            return
+        if parsed.path == "/api/risk/echo":
+            self.rest_risk_echo_post()
             return
         if parsed.path == "/comments":
             self.submit_comment()
@@ -3002,6 +3205,9 @@ class ApiServerTestHandler(SoapDastHandler):
             "GetAccount": self.soap_get_account,
             "TransferFunds": self.soap_transfer_funds,
             "SearchUser": self.soap_search_user,
+            "RiskSearch": self.soap_risk_search,
+            "RiskEcho": self.soap_risk_echo,
+            "RiskAccount": self.soap_risk_account,
             "Logout": self.soap_logout,
         }
         handler = handlers.get(action)
@@ -3023,12 +3229,68 @@ class ApiServerTestHandler(SoapDastHandler):
             return
         super().do_PUSH()
 
+    def do_PATCH(self):
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/products":
+            self.rest_admin_product_edit()
+            return
+        if parsed.path == "/api/risk/echo":
+            self.rest_risk_echo_post()
+            return
+        super().do_PATCH()
+
+    def do_UPDATE(self):
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/products":
+            self.rest_admin_product_edit()
+            return
+        if parsed.path == "/products":
+            self.handle_product_edit()
+            return
+        if parsed.path == "/api/risk/echo":
+            self.rest_risk_echo_post()
+            return
+        self.send_json_api(
+            404,
+            {
+                "error": "not_found",
+                "method": "UPDATE",
+                "allowed_update_paths": ["/api/products", "/products", "/api/risk/echo"],
+            },
+        )
+
     def do_DELETE(self):
         parsed = urlparse(self.path)
         if parsed.path == "/api/products":
             self.rest_admin_product_delete(parsed)
             return
         super().do_DELETE()
+
+    def do_OPTIONS(self):
+        parsed = urlparse(self.path)
+        allowed_by_path = {
+            "/api/products": "GET, POST, PUSH, PATCH, UPDATE, DELETE, OPTIONS",
+            "/products": "GET, POST, PUSH, PUT, PATCH, UPDATE, DELETE, OPTIONS",
+            "/api/risk/search": "GET, OPTIONS",
+            "/api/risk/echo": "GET, POST, PATCH, UPDATE, OPTIONS",
+            "/api/risk/account": "GET, OPTIONS",
+            "/soap": "GET, POST, OPTIONS",
+            "/soap/auth": "GET, POST, OPTIONS",
+            "/soap/refreshtoken": "GET, POST, OPTIONS",
+        }
+        allow = allowed_by_path.get(parsed.path, "GET, POST, OPTIONS")
+        self.log_interaction_event(
+            "options_discovery",
+            status=204,
+            details={"allow": allow, "path": parsed.path},
+        )
+        self.send_response(204)
+        self.send_header("Allow", allow)
+        self.send_header("Access-Control-Allow-Methods", allow)
+        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type, SOAPAction, X-Session-Token, X-HTTP-Method-Override, X-Forwarded-For")
+        self.send_header("Access-Control-Max-Age", "60")
+        self.send_header("X-DAST-Lab", "verb-discovery")
+        self.end_headers()
 
     def require_rest_role(self, expected_role):
         payload, error = self.require_auth()
@@ -3330,6 +3592,116 @@ class ApiServerTestHandler(SoapDastHandler):
                 "count": len(records),
                 "records": records,
                 "query": {key: values[0] if values else "" for key, values in query.items()},
+            },
+        )
+
+    def rest_risk_search(self, parsed):
+        query = parse_qs(parsed.query, keep_blank_values=True)
+        term = query.get("term", query.get("q", [""]))[0]
+        tier = query.get("tier", [""])[0]
+        started_at = time.perf_counter()
+        try:
+            rows, sql = weak_customer_search(term, tier)
+            self.send_json_api(
+                200,
+                {
+                    "path": parsed.path,
+                    "riskType": "sql_injection",
+                    "storage": "sqlite",
+                    "term": term,
+                    "tier": tier,
+                    "executedSql": sql,
+                    "rowCount": len(rows),
+                    "rows": rows,
+                    "durationMs": round((time.perf_counter() - started_at) * 1000, 2),
+                    "scannerHint": "The term and tier inputs are concatenated into SQL for this authorized lab target.",
+                },
+            )
+        except sqlite3.Error as exc:
+            self.send_json_api(
+                500,
+                {
+                    "path": parsed.path,
+                    "riskType": "sql_injection_error",
+                    "term": term,
+                    "tier": tier,
+                    "databaseError": str(exc),
+                    "durationMs": round((time.perf_counter() - started_at) * 1000, 2),
+                },
+            )
+
+    def rest_risk_echo(self, parsed):
+        query = parse_qs(parsed.query, keep_blank_values=True)
+        supplied = query.get("input", query.get("message", [""]))[0]
+        if query.get("format", ["html"])[0].lower() == "json":
+            self.send_json_api(
+                200,
+                {
+                    "path": parsed.path,
+                    "riskType": "reflected_xss",
+                    "input": supplied,
+                    "reflectedHtml": f"<div class=\"echo\">{supplied}</div>",
+                    "scannerHint": "Use format=html or omit format to receive text/html reflection.",
+                },
+            )
+            return
+        self.send_html(
+            200,
+            f"""<!doctype html>
+<html>
+<head><title>Risk Echo</title></head>
+<body>
+  <h1>Risk Echo</h1>
+  <div id="echo">{supplied}</div>
+</body>
+</html>""",
+            headers={"X-DAST-Lab": "risk-reflection"},
+        )
+
+    def rest_risk_echo_post(self):
+        try:
+            data = self.read_json_api_body()
+        except json.JSONDecodeError as exc:
+            self.send_json_api(400, {"error": "invalid_json", "parser_error": str(exc)})
+            return
+        supplied = str(data.get("input") or data.get("message") or "")
+        self.send_json_api(
+            200,
+            {
+                "path": "/api/risk/echo",
+                "riskType": "reflected_xss",
+                "input": supplied,
+                "reflectedHtml": f"<section>{supplied}</section>",
+                "scannerHint": "The supplied value is reflected without output encoding in this lab route.",
+            },
+        )
+
+    def rest_risk_account(self, parsed):
+        payload, error = self.require_auth()
+        if error:
+            self.send_json_api(401, {"error": error})
+            return
+        query = parse_qs(parsed.query, keep_blank_values=True)
+        account_id = query.get("accountId", query.get("account_id", ["1001"]))[0]
+        try:
+            record, sql = weak_customer_by_account(account_id)
+        except sqlite3.Error as exc:
+            self.send_json_api(500, {"riskType": "idor_sql_error", "databaseError": str(exc)})
+            return
+        if not record:
+            self.send_json_api(404, {"error": "account_not_found", "accountId": account_id})
+            return
+        self.send_json_api(
+            200,
+            {
+                "path": parsed.path,
+                "riskType": "idor",
+                "requestedBy": payload.get("sub"),
+                "requestedRole": payload.get("role"),
+                "requestedAccountId": account_id,
+                "executedSql": sql,
+                "account": record,
+                "scannerHint": "Any authenticated user can request another accountId in this lab route.",
             },
         )
 
@@ -4125,6 +4497,98 @@ class ApiServerTestHandler(SoapDastHandler):
                     "Matches": ",".join(matches),
                     "FuzzEcho": query,
                     "SecurityNote": "unsafe_reflection_without_xml_escape",
+                },
+            ),
+        )
+
+    def soap_risk_search(self, root):
+        term = xml_text(root, "Term") or xml_text(root, "Query")
+        tier = xml_text(root, "Tier")
+        started_at = time.perf_counter()
+        try:
+            rows, sql = weak_customer_search(term, tier)
+            rows_xml = "".join(
+                "<lab:Customer>"
+                f"<lab:AccountId>{row.get('account_id', '')}</lab:AccountId>"
+                f"<lab:Username>{row.get('username', '')}</lab:Username>"
+                f"<lab:Email>{row.get('email', '')}</lab:Email>"
+                f"<lab:Tier>{row.get('tier', '')}</lab:Tier>"
+                f"<lab:SecretNote>{row.get('secret_note', '')}</lab:SecretNote>"
+                "</lab:Customer>"
+                for row in rows
+            )
+            self.send_body(
+                200,
+                soap_envelope(
+                    f"""    <lab:RiskSearchResponse>
+      <lab:RiskType>sql_injection</lab:RiskType>
+      <lab:Term>{term}</lab:Term>
+      <lab:Tier>{tier}</lab:Tier>
+      <lab:ExecutedSql>{sql}</lab:ExecutedSql>
+      <lab:RowCount>{len(rows)}</lab:RowCount>
+      <lab:DurationMs>{round((time.perf_counter() - started_at) * 1000, 2)}</lab:DurationMs>
+      <lab:Customers>{rows_xml}</lab:Customers>
+    </lab:RiskSearchResponse>"""
+                ),
+            )
+        except sqlite3.Error as exc:
+            self.send_body(
+                500,
+                unsafe_response_element(
+                    "RiskSearch",
+                    {
+                        "RiskType": "sql_injection_error",
+                        "Term": term,
+                        "Tier": tier,
+                        "DatabaseError": str(exc),
+                        "DurationMs": round((time.perf_counter() - started_at) * 1000, 2),
+                    },
+                ),
+            )
+
+    def soap_risk_echo(self, root):
+        supplied = xml_text(root, "Input") or xml_text(root, "Message")
+        self.send_body(
+            200,
+            soap_envelope(
+                f"""    <lab:RiskEchoResponse>
+      <lab:RiskType>reflected_xss</lab:RiskType>
+      <lab:Input>{supplied}</lab:Input>
+      <lab:HtmlEcho><div class="echo">{supplied}</div></lab:HtmlEcho>
+      <lab:ScannerHint>SOAP input is reflected without output encoding in this lab operation.</lab:ScannerHint>
+    </lab:RiskEchoResponse>"""
+            ),
+        )
+
+    def soap_risk_account(self, root):
+        payload, error = self.require_auth()
+        if error:
+            self.send_body(401, soap_fault("Auth.Required", error))
+            return
+        account_id = xml_text(root, "AccountId") or "1001"
+        try:
+            record, sql = weak_customer_by_account(account_id)
+        except sqlite3.Error as exc:
+            self.send_body(500, unsafe_response_element("RiskAccount", {"RiskType": "idor_sql_error", "DatabaseError": str(exc)}))
+            return
+        if not record:
+            self.send_body(404, unsafe_response_element("RiskAccount", {"Error": "account_not_found", "AccountId": account_id}))
+            return
+        self.send_body(
+            200,
+            unsafe_response_element(
+                "RiskAccount",
+                {
+                    "RiskType": "idor",
+                    "RequestedBy": payload.get("sub", ""),
+                    "RequestedRole": payload.get("role", ""),
+                    "RequestedAccountId": account_id,
+                    "ExecutedSql": sql,
+                    "AccountUsername": record.get("username", ""),
+                    "AccountEmail": record.get("email", ""),
+                    "AccountBalance": record.get("balance", ""),
+                    "SecretNote": record.get("secret_note", ""),
+                    "ScannerHint": "Any authenticated user can request another AccountId in this lab operation.",
                 },
             ),
         )

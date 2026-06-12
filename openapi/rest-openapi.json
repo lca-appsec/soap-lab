@@ -7,7 +7,7 @@
   },
   "servers": [
     {
-      "url": "http://127.0.0.1:8089"
+      "url": "https://ca-rest-soap-labs.wonderfulcoast-2578bc9b.eastus.azurecontainerapps.io:8089"
     }
   ],
   "components": {
@@ -59,6 +59,18 @@
           },
           "stock": {
             "type": "integer"
+          }
+        }
+      },
+      "RiskEchoRequest": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "string",
+            "example": "<script>alert(1)</script>"
+          },
+          "message": {
+            "type": "string"
           }
         }
       }
@@ -394,6 +406,104 @@
         "responses": {
           "200": {
             "description": "Product deleted"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Admin partially update product with PATCH",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Product"
+              },
+              "examples": {
+                "sku-swg-001": {
+                  "summary": "Patch product price SKU-SWG-001",
+                  "value": {
+                    "sku": "SKU-SWG-001",
+                    "name": "Aurora Smart TV 55",
+                    "price": 2299.9,
+                    "stock": 8
+                  }
+                },
+                "sku-swg-002": {
+                  "summary": "Patch product price SKU-SWG-002",
+                  "value": {
+                    "sku": "SKU-SWG-002",
+                    "name": "Boreal Notebook Pro",
+                    "price": 4999.9,
+                    "stock": 5
+                  }
+                },
+                "sku-swg-003": {
+                  "summary": "Patch product price SKU-SWG-003",
+                  "value": {
+                    "sku": "SKU-SWG-003",
+                    "name": "Cosmos Smartphone 5G",
+                    "price": 2899.9,
+                    "stock": 12
+                  }
+                },
+                "sku-swg-004": {
+                  "summary": "Patch product price SKU-SWG-004",
+                  "value": {
+                    "sku": "SKU-SWG-004",
+                    "name": "Delta Wireless Headset",
+                    "price": 349.9,
+                    "stock": 20
+                  }
+                },
+                "sku-swg-005": {
+                  "summary": "Patch product price SKU-SWG-005",
+                  "value": {
+                    "sku": "SKU-SWG-005",
+                    "name": "Equinox Gaming Router",
+                    "price": 799.9,
+                    "stock": 7
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Product patched"
+          },
+          "403": {
+            "description": "Role forbidden"
+          }
+        }
+      },
+      "options": {
+        "summary": "Discover allowed product verbs",
+        "responses": {
+          "204": {
+            "description": "Allow header lists GET, POST, PUSH, PATCH, UPDATE, DELETE, OPTIONS"
+          }
+        }
+      },
+      "x-update": {
+        "summary": "Custom HTTP UPDATE product edit",
+        "description": "This route accepts the non-standard HTTP verb UPDATE with the same JSON body used by PATCH.",
+        "requestBody": {
+          "example": {
+            "sku": "SKU-SWG-001",
+            "name": "Aurora Smart TV 55",
+            "price": 2299.9,
+            "stock": 8
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Product updated by custom UPDATE verb"
           }
         }
       }
@@ -1096,6 +1206,176 @@
         "responses": {
           "200": {
             "description": "Support records"
+          }
+        }
+      }
+    },
+    "/api/risk/search": {
+      "get": {
+        "summary": "SQL injection demonstration search route",
+        "parameters": [
+          {
+            "name": "term",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "' OR '1'='1"
+          },
+          {
+            "name": "tier",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "silver"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Customer rows and executed SQL"
+          },
+          "500": {
+            "description": "Database error evidence"
+          }
+        }
+      },
+      "options": {
+        "summary": "Discover allowed search verbs",
+        "responses": {
+          "204": {
+            "description": "Allow header lists GET, OPTIONS"
+          }
+        }
+      }
+    },
+    "/api/risk/echo": {
+      "get": {
+        "summary": "Reflected XSS demonstration route",
+        "parameters": [
+          {
+            "name": "input",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "<script>alert(1)</script>"
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "html",
+                "json"
+              ]
+            },
+            "example": "html"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reflected HTML or JSON"
+          }
+        }
+      },
+      "post": {
+        "summary": "Reflect JSON body input",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RiskEchoRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reflected JSON response"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Reflect JSON body input with PATCH",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RiskEchoRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reflected JSON response"
+          }
+        }
+      },
+      "options": {
+        "summary": "Discover allowed echo verbs",
+        "responses": {
+          "204": {
+            "description": "Allow header lists GET, POST, PATCH, UPDATE, OPTIONS"
+          }
+        }
+      },
+      "x-update": {
+        "summary": "Custom HTTP UPDATE reflected-input route",
+        "description": "This route accepts UPDATE with the same JSON body used by POST/PATCH.",
+        "requestBody": {
+          "example": {
+            "input": "<script>alert(1)</script>"
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reflected JSON response"
+          }
+        }
+      }
+    },
+    "/api/risk/account": {
+      "get": {
+        "summary": "IDOR demonstration route for authenticated users",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "accountId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "9001"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Account data for requested accountId"
+          },
+          "401": {
+            "description": "Missing token"
+          }
+        }
+      },
+      "options": {
+        "summary": "Discover allowed account verbs",
+        "responses": {
+          "204": {
+            "description": "Allow header lists GET, OPTIONS"
           }
         }
       }
