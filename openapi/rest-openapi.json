@@ -3,7 +3,7 @@
   "info": {
     "title": "SOAP and REST DAST Lab - Focused REST/Catalog Surface",
     "version": "1.0.0",
-    "description": "Focused OpenAPI document containing only /api/products, /api/products/*, /api/ecommerce, /api/ecommerce/*, and /api/comments."
+    "description": "Focused OpenAPI document containing /api/products, /api/products/*, /api/ecommerce, /api/ecommerce/*, /api/comments, and /api/risk* routes."
   },
   "servers": [
     {
@@ -50,6 +50,18 @@
               "yes",
               "no"
             ]
+          }
+        }
+      },
+      "RiskEchoRequest": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "string",
+            "example": "<script>alert(1)</script>"
+          },
+          "message": {
+            "type": "string"
           }
         }
       }
@@ -700,6 +712,276 @@
                   "type": "string"
                 },
                 "example": "GET, POST, HEAD, OPTIONS"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/risk/search": {
+      "get": {
+        "summary": "SQL injection demonstration search route",
+        "parameters": [
+          {
+            "name": "term",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "' OR '1'='1"
+          },
+          {
+            "name": "tier",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "silver"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Customer rows and executed SQL"
+          },
+          "500": {
+            "description": "Database error evidence"
+          }
+        }
+      },
+      "x-accepted-verbs": [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "head": {
+        "summary": "HEAD metadata for /api/risk/search",
+        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
+        "responses": {
+          "200": {
+            "description": "Headers only; Content-Type is application/json"
+          },
+          "404": {
+            "description": "Route not found"
+          }
+        }
+      },
+      "options": {
+        "summary": "OPTIONS verb discovery for /api/risk/search",
+        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
+        "responses": {
+          "204": {
+            "description": "Allow header lists: GET, HEAD, OPTIONS",
+            "headers": {
+              "Allow": {
+                "description": "Methods accepted by this route",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "GET, HEAD, OPTIONS"
+              },
+              "Access-Control-Allow-Methods": {
+                "description": "CORS method discovery header",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "GET, HEAD, OPTIONS"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/risk/echo": {
+      "get": {
+        "summary": "Reflected XSS demonstration route",
+        "parameters": [
+          {
+            "name": "input",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "<script>alert(1)</script>"
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "html",
+                "json"
+              ]
+            },
+            "example": "html"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reflected HTML or JSON"
+          }
+        }
+      },
+      "post": {
+        "summary": "Reflect JSON body input",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RiskEchoRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reflected JSON response"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Reflect JSON body input with PATCH",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RiskEchoRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reflected JSON response"
+          }
+        }
+      },
+      "x-update": {
+        "summary": "Custom HTTP UPDATE reflected-input route",
+        "description": "This route accepts UPDATE with the same JSON body used by POST/PATCH.",
+        "requestBody": {
+          "example": {
+            "input": "<script>alert(1)</script>"
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reflected JSON response"
+          }
+        }
+      },
+      "x-accepted-verbs": [
+        "GET",
+        "POST",
+        "PATCH",
+        "UPDATE",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "head": {
+        "summary": "HEAD metadata for /api/risk/echo",
+        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
+        "responses": {
+          "200": {
+            "description": "Headers only; Content-Type is application/json"
+          },
+          "404": {
+            "description": "Route not found"
+          }
+        }
+      },
+      "options": {
+        "summary": "OPTIONS verb discovery for /api/risk/echo",
+        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
+        "responses": {
+          "204": {
+            "description": "Allow header lists: GET, POST, PATCH, UPDATE, HEAD, OPTIONS",
+            "headers": {
+              "Allow": {
+                "description": "Methods accepted by this route",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "GET, POST, PATCH, UPDATE, HEAD, OPTIONS"
+              },
+              "Access-Control-Allow-Methods": {
+                "description": "CORS method discovery header",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "GET, POST, PATCH, UPDATE, HEAD, OPTIONS"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/risk/account": {
+      "get": {
+        "summary": "IDOR demonstration route for authenticated users",
+        "parameters": [
+          {
+            "name": "accountId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "9001"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Account data for requested accountId"
+          },
+          "401": {
+            "description": "Missing token"
+          }
+        }
+      },
+      "x-accepted-verbs": [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "head": {
+        "summary": "HEAD metadata for /api/risk/account",
+        "description": "HEAD returns only response headers and no body. Use it for DAST verb discovery and metadata checks.",
+        "responses": {
+          "200": {
+            "description": "Headers only; Content-Type is application/json"
+          },
+          "404": {
+            "description": "Route not found"
+          }
+        }
+      },
+      "options": {
+        "summary": "OPTIONS verb discovery for /api/risk/account",
+        "description": "OPTIONS returns the Allow and Access-Control-Allow-Methods headers for verb discovery.",
+        "responses": {
+          "204": {
+            "description": "Allow header lists: GET, HEAD, OPTIONS",
+            "headers": {
+              "Allow": {
+                "description": "Methods accepted by this route",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "GET, HEAD, OPTIONS"
+              },
+              "Access-Control-Allow-Methods": {
+                "description": "CORS method discovery header",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "GET, HEAD, OPTIONS"
               }
             }
           }

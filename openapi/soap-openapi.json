@@ -52,6 +52,18 @@
             ]
           }
         }
+      },
+      "RiskEchoRequest": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "string",
+            "example": "<script>alert(1)</script>"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
       }
     }
   },

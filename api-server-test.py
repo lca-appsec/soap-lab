@@ -2796,6 +2796,13 @@ def limited_catalog_openapi_spec(title, description, default_content_type="appli
                         "promotion": {"type": "string", "enum": ["yes", "no"]},
                     },
                 },
+                "RiskEchoRequest": {
+                    "type": "object",
+                    "properties": {
+                        "input": {"type": "string", "example": "<script>alert(1)</script>"},
+                        "message": {"type": "string"},
+                    },
+                },
             },
         },
         "paths": {
@@ -2806,13 +2813,71 @@ def limited_catalog_openapi_spec(title, description, default_content_type="appli
             comments_route: comments_path,
         },
     }
+    if api_prefix:
+        risk_paths = {
+            "/api/risk/search": {
+                "get": {
+                    "summary": "SQL injection demonstration search route",
+                    "parameters": [
+                        {"name": "term", "in": "query", "required": False, "schema": {"type": "string"}, "example": "' OR '1'='1"},
+                        {"name": "tier", "in": "query", "required": False, "schema": {"type": "string"}, "example": "silver"},
+                    ],
+                    "responses": {"200": {"description": "Customer rows and executed SQL"}, "500": {"description": "Database error evidence"}},
+                }
+            },
+            "/api/risk/echo": {
+                "get": {
+                    "summary": "Reflected XSS demonstration route",
+                    "parameters": [
+                        {"name": "input", "in": "query", "required": False, "schema": {"type": "string"}, "example": "<script>alert(1)</script>"},
+                        {"name": "format", "in": "query", "required": False, "schema": {"type": "string", "enum": ["html", "json"]}, "example": "html"},
+                    ],
+                    "responses": {"200": {"description": "Reflected HTML or JSON"}},
+                },
+                "post": {
+                    "summary": "Reflect JSON body input",
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RiskEchoRequest"}}}},
+                    "responses": {"200": {"description": "Reflected JSON response"}},
+                },
+                "patch": {
+                    "summary": "Reflect JSON body input with PATCH",
+                    "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RiskEchoRequest"}}}},
+                    "responses": {"200": {"description": "Reflected JSON response"}},
+                },
+                "x-update": {
+                    "summary": "Custom HTTP UPDATE reflected-input route",
+                    "description": "This route accepts UPDATE with the same JSON body used by POST/PATCH.",
+                    "requestBody": {"example": {"input": "<script>alert(1)</script>"}},
+                    "responses": {"200": {"description": "Reflected JSON response"}},
+                },
+            },
+            "/api/risk/account": {
+                "get": {
+                    "summary": "IDOR demonstration route for authenticated users",
+                    "parameters": [{"name": "accountId", "in": "query", "required": False, "schema": {"type": "string"}, "example": "9001"}],
+                    "responses": {"200": {"description": "Account data for requested accountId"}, "401": {"description": "Missing token"}},
+                }
+            },
+        }
+        spec["paths"].update(risk_paths)
+        spec = add_verb_discovery_to_openapi(
+            spec,
+            {
+                **limited_allowed_verbs,
+                "/api/risk/search": "GET, HEAD, OPTIONS",
+                "/api/risk/echo": "GET, POST, PATCH, UPDATE, HEAD, OPTIONS",
+                "/api/risk/account": "GET, HEAD, OPTIONS",
+            },
+            default_content_type=default_content_type,
+        )
+        return spec
     return add_verb_discovery_to_openapi(spec, limited_allowed_verbs, default_content_type=default_content_type)
 
 
 def rest_openapi_spec():
     return limited_catalog_openapi_spec(
         "SOAP and REST DAST Lab - Focused REST/Catalog Surface",
-        "Focused OpenAPI document containing only /api/products, /api/products/*, /api/ecommerce, /api/ecommerce/*, and /api/comments.",
+        "Focused OpenAPI document containing /api/products, /api/products/*, /api/ecommerce, /api/ecommerce/*, /api/comments, and /api/risk* routes.",
         "application/json",
         api_prefix=True,
     )
